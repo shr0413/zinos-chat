@@ -165,6 +165,13 @@ def check_gift():
         return True
     return False
 
+def play_audio_file(file_path):
+    try:
+        sound = AudioSegment.from_file(file_path)
+        sound.play()
+    except Exception as e:
+        print(f"Failed to play the audio file: {e}")
+
 def recognize_speech():
     recognizer = sr.Recognizer()
     with sr.Microphone() as source:
@@ -178,13 +185,6 @@ def recognize_speech():
         except sr.UnknownValueError:
             print("Sorry, I did not understand that.")
         except sr.RequestError as e:
-
-def play_audio_file(file_path):
-    try:
-        sound = AudioSegment.from_file(file_path)
-        sound.play()
-    except Exception as e:
-        print(f"Failed to play the audio file: {e}")
 
 def speak_text(text):
     try:
