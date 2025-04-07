@@ -166,11 +166,8 @@ def check_gift():
     return False
 
 def play_audio_file(file_path):
-    try:
-        sound = AudioSegment.from_file(file_path)
-        sound.play()
-    except Exception as e:
-        print(f"Failed to play the audio file: {e}")
+    sound = AudioSegment.from_file(file_path)
+    sound.play()
 
 def recognize_speech():
     recognizer = sr.Recognizer()
