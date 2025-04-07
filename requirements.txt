@@ -11,4 +11,5 @@ SpeechRecognition==3.10.0
 pysqlite3-binary
 python-dotenv
 gTTS
-pyttsx3
+pydub
+ffmpeg
