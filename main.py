@@ -56,6 +56,9 @@ st.markdown(
 
 os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 
+embedding_function = OpenAIEmbeddings()
+print(f"Embedding function initialized: {embedding_function}")
+
 semantic_model = OpenAI(temperature=0.4)
 
 # Initialise session state
@@ -303,7 +306,6 @@ def main():
             embedding_function=OpenAIEmbeddings(),
             persist_directory=get_vectordb(role)
         )
-        print(f"Embedding function initialized: {embedding_function}")
         print(f"Vector store path: {get_vectordb(role)}")
 
         most_relevant_texts = vectordb.max_marginal_relevance_search(
