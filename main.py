@@ -160,7 +160,7 @@ def update_intimacy_score(response_text):
     )
 
 def check_gift():
-    if st.session_state.intimacy_score >= 5 and not st.session_state.gift_given:
+    if st.session_state.intimacy_score >= 3 and not st.session_state.gift_given:
         st.session_state.gift_given = True
         return True
     return False
