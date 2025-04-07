@@ -180,7 +180,11 @@ def recognize_speech():
         except sr.RequestError as e:
 
 def play_audio_file(file_path):
-    os.system(f"afplay {file_path}")
+    try:
+        sound = AudioSegment.from_file(file_path)
+        sound.play()
+    except Exception as e:
+        print(f"Failed to play the audio file: {e}")
 
 def speak_text(text):
     try:
