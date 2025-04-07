@@ -13,5 +13,5 @@ python-dotenv
 gTTS
 pydub
 ffmpeg
-sounddevice
 SpeechRecognition
+pocketsphinx
