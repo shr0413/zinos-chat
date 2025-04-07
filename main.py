@@ -165,10 +165,6 @@ def check_gift():
         return True
     return False
 
-def play_audio_file(file_path):
-    sound = AudioSegment.from_file(file_path)
-    sound.play()
-
 def recognize_speech():
     recognizer = sr.Recognizer()
     with sr.Microphone() as source:
@@ -182,7 +178,12 @@ def recognize_speech():
         except sr.UnknownValueError:
             print("Sorry, I did not understand that.")
         except sr.RequestError as e:
+            print(f"Could not request results from Google Speech Recognition service; {e}")
+        return None
 
+def play_audio_file(file_path):
+    os.system(f"afplay {file_path}")
+    
 def speak_text(text):
     try:
         filename = f"output_{uuid.uuid4().hex}.mp3"
