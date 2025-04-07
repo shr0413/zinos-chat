@@ -7,6 +7,8 @@ from pydub import AudioSegment
 import re
 import base64
 import subprocess
+import sounddevice as sd
+import numpy as np
 import speech_recognition as sr
 import streamlit as st
 import uuid
@@ -167,7 +169,7 @@ def check_gift():
 
 def recognize_speech():
     recognizer = sr.Recognizer()
-    with sr.Microphone() as source:
+    with sr.Microphone(device_index=None) as source:
         print("Listening...")
         audio = recognizer.listen(source)
         try:
@@ -176,10 +178,9 @@ def recognize_speech():
             return text
         except sr.UnknownValueError:
             print("Sorry, I did not understand that.")
-            return None
-        except sr.RequestError:
-            print("Sorry, there was an error with the speech recognition service.")
-            return None
+        except sr.RequestError as e:
+            print(f"Could not request results from Google Speech Recognition service; {e}")
+    return None
 
 def play_audio_file(file_path):
     os.system(f"afplay {file_path}")
