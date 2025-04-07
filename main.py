@@ -289,7 +289,7 @@ def main():
         f'<img src="data:image/png;base64,{img_base64}" class="normal-image">',
         unsafe_allow_html=True
     )
-    
+    user_input = None
     if st.button('Start Voice Input'):
          st.text_input('Start the conversation!')
     else:
