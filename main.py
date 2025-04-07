@@ -189,16 +189,26 @@ def speak_text(text):
         filename = f"output_{uuid.uuid4().hex}.mp3"
         tts = gTTS(text, lang='en', slow=False)
         tts.save("temp.mp3")
+
         sound = AudioSegment.from_file("temp.mp3")
         lively_sound = sound.speedup(playback_speed=1.3)
         lively_sound.export(filename, format="mp3")
+        
+        while not os.path.exists(filename):
+            time.sleep(0.1)
+
+        with open(filename, "rb") as f:
+            audio_data = f.read()
+            b64_audio = base64.b64encode(audio_data).decode()
+
         audio_html = f"""
             <audio autoplay>
-                <source src="data:audio/mp3;base64,{get_base64(filename)}" type="audio/mp3">
+                <source src="data:audio/mp3;base64,{b64_audio}" type="audio/mp3">
             </audio>
         """
         st.markdown(audio_html, unsafe_allow_html=True)
-        time.sleep(1)
+
+        time.sleep(1)  # Still give browser time to play
     except Exception as e:
         st.error(f"Failed to speak: {e}")
 
