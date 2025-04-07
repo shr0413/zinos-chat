@@ -195,7 +195,7 @@ def speak_text(text):
         lively_sound.export(filename, format="mp3")
         
         while not os.path.exists(filename):
-            time.sleep(0.1)
+            time.sleep(1.0)
 
         with open(filename, "rb") as f:
             audio_data = f.read()
@@ -301,11 +301,14 @@ def main():
     if user_input:
         vectordb = Chroma(
             embedding_function=OpenAIEmbeddings(),
+            print(f"Embedding function initialized: {embedding_function}")
             persist_directory=get_vectordb(role)
+            print(f"Vector store path: {get_vectordb(role)}")
         )
         most_relevant_texts = vectordb.max_marginal_relevance_search(
             user_input, k=2, fetch_k=6, lambda_mult=1
         )
+        print(f"Most relevant texts: {most_relevant_texts}")
         
         chain, role_config = get_conversational_chain(role)
         raw_answer = chain.run(
