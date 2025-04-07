@@ -2,7 +2,8 @@ import sys
 import os
 import pysqlite3
 sys.modules["sqlite3"] = pysqlite3
-import pyttsx3
+from gtts import gTTS
+from pydub import AudioSegment
 import re
 import base64
 import subprocess
@@ -182,21 +183,16 @@ def play_audio_file(file_path):
     os.system(f"afplay {file_path}")
 
 def speak_text(text, role_config=None):
-    engine = pyttsx3.init()
-    engine.setProperty('rate', 200)  # Default ~150; higher = faster
-    engine.setProperty('volume', 1.0)  # Max volume
-    voices = engine.getProperty('voices')
-    
-    # Pick a higher-pitched or childlike voice if available
-    for voice in voices:
-        if "female" in voice.name.lower() or "child" in voice.name.lower():
-            engine.setProperty('voice', voice.id)
-            break
+    tts = gTTS(text, lang='en')
+    tts.save("temp.mp3")
 
-    audio_path = "output.mp3"
-    engine.save_to_file(text, audio_path)
-    engine.runAndWait()
-    st.audio(audio_path, format="audio/mp3")
+    # Speed up the audio to sound more lively
+    sound = AudioSegment.from_file("temp.mp3")
+    faster_sound = sound.speedup(playback_speed=1.3)  # 1.3x speed
+    output_path = "output.mp3"
+    faster_sound.export(output_path, format="mp3")
+
+    st.audio(output_path, format="audio/mp3")
 
 # Roles Configuration
 role_configs = {
