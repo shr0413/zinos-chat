@@ -301,10 +301,11 @@ def main():
     if user_input:
         vectordb = Chroma(
             embedding_function=OpenAIEmbeddings(),
-            print(f"Embedding function initialized: {embedding_function}")
             persist_directory=get_vectordb(role)
-            print(f"Vector store path: {get_vectordb(role)}")
         )
+        print(f"Embedding function initialized: {embedding_function}")
+        print(f"Vector store path: {get_vectordb(role)}")
+
         most_relevant_texts = vectordb.max_marginal_relevance_search(
             user_input, k=2, fetch_k=6, lambda_mult=1
         )
