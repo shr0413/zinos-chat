@@ -291,9 +291,7 @@ def main():
     )
 
     if st.button('Start Voice Input'):
-        user_input = recognize_speech()
-        if user_input:
-            st.text_input('Start the conversation!', value=user_input)
+            st.text_input('Apologies, this feature is currently under maintenance!')
     else:
         user_input = st.text_input('Start the conversation. What would you like to ask?')
     
