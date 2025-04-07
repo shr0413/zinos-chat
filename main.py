@@ -2,7 +2,7 @@ import sys
 import os
 import pysqlite3
 sys.modules["sqlite3"] = pysqlite3
-from gtts import gTTS
+import pyttsx3
 import re
 import base64
 import subprocess
@@ -182,9 +182,20 @@ def play_audio_file(file_path):
     os.system(f"afplay {file_path}")
 
 def speak_text(text, role_config=None):
-    tts = gTTS(text)
+    engine = pyttsx3.init()
+    engine.setProperty('rate', 200)  # Default ~150; higher = faster
+    engine.setProperty('volume', 1.0)  # Max volume
+    voices = engine.getProperty('voices')
+    
+    # Pick a higher-pitched or childlike voice if available
+    for voice in voices:
+        if "female" in voice.name.lower() or "child" in voice.name.lower():
+            engine.setProperty('voice', voice.id)
+            break
+
     audio_path = "output.mp3"
-    tts.save(audio_path)
+    engine.save_to_file(text, audio_path)
+    engine.runAndWait()
     st.audio(audio_path, format="audio/mp3")
 
 # Roles Configuration
