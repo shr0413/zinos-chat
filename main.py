@@ -291,7 +291,7 @@ def main():
     )
     
     if st.button('Start Voice Input'):
-        user_input = recognize_speech()
+        st.text_input('Start the conversation!')
         if user_input:
             st.text_input('Start the conversation!', value=user_input)
     else:
