@@ -2,7 +2,7 @@ import sys
 import os
 import pysqlite3
 sys.modules["sqlite3"] = pysqlite3
-
+from gtts import gTTS
 import re
 import base64
 import subprocess
@@ -181,14 +181,11 @@ def recognize_speech():
 def play_audio_file(file_path):
     os.system(f"afplay {file_path}")
 
-def speak_text(text, role_config):
-    play_audio_file(role_config['intro_audio'])
-    command = [
-        'say', '-v', role_config['voice'], 
-        '-r', role_config['rate'], 
-        '[[' + 'pbas ' + role_config['pitch'] + ']] ' + text
-    ]
-    subprocess.call(command)
+def speak_text(text, role_config=None):
+    tts = gTTS(text)
+    audio_path = "output.mp3"
+    tts.save(audio_path)
+    st.audio(audio_path, format="audio/mp3")
 
 # Roles Configuration
 role_configs = {
