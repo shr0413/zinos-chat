@@ -57,7 +57,7 @@ st.markdown(
 os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 
 embedding_function = OpenAIEmbeddings()
-print(f"Embedding function initialized: {embedding_function}")
+st.write(f"Embedding function initialized: {embedding_function}")
 
 semantic_model = OpenAI(temperature=0.4)
 
@@ -306,12 +306,12 @@ def main():
             embedding_function=OpenAIEmbeddings(),
             persist_directory=get_vectordb(role)
         )
-        print(f"Vector store path: {get_vectordb(role)}")
+        st.write(f"Vector store path: {get_vectordb(role)}")
 
         most_relevant_texts = vectordb.max_marginal_relevance_search(
             user_input, k=2, fetch_k=6, lambda_mult=1
         )
-        print(f"Most relevant texts: {most_relevant_texts}")
+        st.write(f"Most relevant texts: {most_relevant_texts}")
         
         chain, role_config = get_conversational_chain(role)
         raw_answer = chain.run(
