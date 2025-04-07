@@ -1,3 +1,8 @@
+import sys
+import os
+import pysqlite3
+sys.modules["sqlite3"] = pysqlite3
+
 import re
 import base64
 import subprocess
