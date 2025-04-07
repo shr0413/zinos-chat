@@ -290,17 +290,11 @@ def main():
         unsafe_allow_html=True
     )
 
-    if 'user_input' not in st.session_state:
-        st.session_state.user_input = ""
         
     if st.button('Start Voice Input'):
          st.text_input = 'Apologies, this feature is currently under maintenance!'
     else:
         st.text_input ='Start the conversation. What would you like to ask?'
-        if user_input:
-            st.session_state.user_input = user_input
-
-
     
     if user_input:
         vectordb = Chroma(
