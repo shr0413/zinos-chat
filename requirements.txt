@@ -13,4 +13,5 @@ python-dotenv
 gTTS
 pydub
 ffmpeg
-pyaudio
+sounddevice
+SpeechRecognition
