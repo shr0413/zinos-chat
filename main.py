@@ -197,6 +197,7 @@ def speak_text(text):
             </audio>
         """
         st.markdown(audio_html, unsafe_allow_html=True)
+        time.sleep(1)
     except Exception as e:
         st.error(f"Failed to speak: {e}")
 
