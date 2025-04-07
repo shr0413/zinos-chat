@@ -9,6 +9,7 @@ import base64
 import subprocess
 import speech_recognition as sr
 import streamlit as st
+import uuid
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 from langchain_community.llms import OpenAI
@@ -182,17 +183,28 @@ def recognize_speech():
 def play_audio_file(file_path):
     os.system(f"afplay {file_path}")
 
-def speak_text(text, role_config=None):
-    tts = gTTS(text, lang='en')
-    tts.save("temp.mp3")
+def speak_text(text):
+    try:
+        filename = f"output_{uuid.uuid4().hex}.mp3"
+        tts = gTTS(text, lang='en', slow=False)
+        tts.save("temp.mp3")
+        sound = AudioSegment.from_file("temp.mp3")
+        lively_sound = sound.speedup(playback_speed=1.3)
+        lively_sound.export(filename, format="mp3")
+        audio_html = f"""
+            <audio autoplay>
+                <source src="data:audio/mp3;base64,{get_base64(filename)}" type="audio/mp3">
+            </audio>
+        """
+        st.markdown(audio_html, unsafe_allow_html=True)
+    except Exception as e:
+        st.error(f"Failed to speak: {e}")
 
-    # Speed up the audio to sound more lively
-    sound = AudioSegment.from_file("temp.mp3")
-    faster_sound = sound.speedup(playback_speed=1.3)  # 1.3x speed
-    output_path = "output.mp3"
-    faster_sound.export(output_path, format="mp3")
-
-    st.audio(output_path, format="audio/mp3")
+def get_base64(file_path):
+    import base64
+    with open(file_path, "rb") as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
 
 # Roles Configuration
 role_configs = {
@@ -316,7 +328,7 @@ def main():
                 st.image("gift.png", width=300, caption="LoGaCuture Medallion")
                 st.markdown("</div>", unsafe_allow_html=True)
 
-        speak_text(answer + (gift_message if gift_triggered else ""), role_config)
+        speak_text(answer + (gift_message if gift_triggered else ""))
         update_intimacy_score(user_input)
         
         with st.expander("Fact-Checking: Doubtful about the response?"):
