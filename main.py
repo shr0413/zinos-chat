@@ -291,10 +291,11 @@ def main():
     )
     
     if st.button('Start Voice Input'):
-        if user_input:
-            st.text_input('Start the conversation!', value=user_input)
+         st.text_input('Start the conversation!')
     else:
         user_input = st.text_input('Start the conversation. What would you like to ask?')
+    if user_input:
+        st.write(f'User Input: {user_input}')
 
     
     if user_input:
