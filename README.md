@@ -15,5 +15,5 @@ export OPENAI_API_KEY='sk-...'
 ## Usage
 
 ```
-> streamlit run ChatSpecies_Start.py
+> streamlit run main.py
 ```
