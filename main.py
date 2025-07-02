@@ -336,7 +336,7 @@ def main():
             height: auto;
         }
         .user-input-box {
-            background-color: #e6f7ff;
+            background-color: #cdd5ae;
             padding: 10px;
             border-radius: 8px;
             margin-bottom: 10px;
