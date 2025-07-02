@@ -406,7 +406,7 @@ def main():
                     "\n\nAfter our wonderful conversation, I feel you deserve something special.\n\n"
                     "Please accept this medal as a symbol of your contribution to Madeira's biodiversity!"
                 )
-                st.markdown(f'<div class="user-input-box"><strong>You asked:</strong> {user_input}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="user-input-box"><strong>You asked:{user_input}</strong></div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="response-box">{answer}</div>', unsafe_allow_html=True)
                 
                 normalized_input = user_input.strip().lower()
