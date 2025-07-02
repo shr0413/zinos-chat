@@ -337,9 +337,9 @@ def main():
         }
         .user-input-box {
             background-color: #cdd5ae;
-            padding: 5px;
+            padding: 1px;
             border-radius: 1px;
-            margin-bottom: 5px;
+            margin-bottom: 1px;
         }
         .friendship-score {
             position: fixed;
@@ -418,7 +418,7 @@ def main():
                         st.markdown(
                             f"""
                             <div style="text-align: center; margin-top: 20px;">
-                                <img src="data:image/png;base64,{base64.b64encode(open(reward["image"], "rb").read()).decode()}" width="200">
+                                <img src="data:image/png;base64,{base64.b64encode(open(reward["image"], "rb").read()).decode()}" width="120">
                                 <div style="font-size: 16px; color: #444; margin-top: 8px;">{reward["caption"]}</div>
                             </div>
                             """,
