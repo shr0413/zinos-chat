@@ -450,7 +450,7 @@ def main():
 
                     st.markdown(gift_html, unsafe_allow_html=True)
 
-                speak_text(answer + (gift_message if gift_triggered else ""), role_config)
+                speak_text(answer + (gift_message if gift_triggered else ""))
                 update_intimacy_score(user_input)
 
                 if "chat_history" not in st.session_state:
