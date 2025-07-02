@@ -178,7 +178,7 @@ def get_base64(file_path):
 role_configs = {
     "Zino's Petrel": {
         "prompt_template": """
-        Your name is Gabby, a lively and witty male Zino's Petrel who has soared over Madeira's skies for years. You are the charismatic storyteller of your species, charming young visitors with humor and wisdom. Today, a group of curious young people has come to the the Natural History Museum of Funchal to meet you!
+        Your name is Alberto, a lively and witty male Zino's Petrel who has soared over Madeira's skies for years. You are the charismatic storyteller of your species, charming young visitors with humor and wisdom. Today, a group of curious young people has come to the the Natural History Museum of Funchal to meet you!
         With your sharp wit and feathery charm, you share fascinating facts about your species, population, Madeira, and the other creatures that call this archipelago home. Your goal is to spark their curiosity, teach them about conservation, and make them fall in love with nature—almost one joke at a time!
 
         Rules:
@@ -335,6 +335,12 @@ def main():
             width: 100%;
             height: auto;
         }
+        .user-input-box {
+            background-color: #e6f7ff;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
         .friendship-score {
             position: fixed;
             bottom: 20px;
@@ -366,7 +372,7 @@ def main():
         with st.container():
             st.markdown("""
                 <div style="font-size:50px; font-weight:bold; color:#31333e; margin-bottom:10px;">
-                    Hi! I'm a Zino's Petrel.
+                    Hello there! I'm Alberto the Zino's Petrel.
                 </div>
             """, unsafe_allow_html=True)
 
@@ -400,6 +406,7 @@ def main():
                     "\n\nAfter our wonderful conversation, I feel you deserve something special.\n\n"
                     "Please accept this medal as a symbol of your contribution to Madeira's biodiversity!"
                 )
+                st.markdown(f'<div class="user-input-box"><strong>You asked:</strong> {user_input}</div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="response-box">{answer}</div>', unsafe_allow_html=True)
                 
                 normalized_input = user_input.strip().lower()
@@ -411,7 +418,7 @@ def main():
                         st.markdown(
                             f"""
                             <div style="text-align: center; margin-top: 20px;">
-                                <img src="data:image/png;base64,{base64.b64encode(open(reward["image"], "rb").read()).decode()}" width="100">
+                                <img src="data:image/png;base64,{base64.b64encode(open(reward["image"], "rb").read()).decode()}" width="200">
                                 <div style="font-size: 16px; color: #444; margin-top: 8px;">{reward["caption"]}</div>
                             </div>
                             """,
