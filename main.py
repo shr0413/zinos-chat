@@ -326,7 +326,7 @@ def main():
         .bird-image-container {
             position: fixed;
             right: 4%;
-            top: 10%;
+            top: 5%;
             width: 30%;
             z-index: 1;
         }
@@ -474,7 +474,7 @@ def main():
         )
 
     with right_col:
-        st.markdown("<div style='margin-top: 600px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='margin-top: 800px;'></div>", unsafe_allow_html=True)
 
         spacer_col, content_col, _ = st.columns([0.8, 9, 1])
         with content_col:
