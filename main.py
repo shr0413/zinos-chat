@@ -20,41 +20,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 
-# Initialisation setup
-
-st.markdown(
-    """
-    <style>
-    .stApp {
-        background-color: #a6dde6;
-    }
-    .normal-image {
-        display: block;
-        margin: 0 auto;
-        width: 300px;
-        height: auto;
-    }
-    div.stButton > button:first-child {
-        background-color: #a6dde6;
-        color: #353149;
-        border: 1px solid #85c9cf;
-        border-radius: 6px;
-        padding: 4px 10px;
-        font-size: 10px;
-        font-weight: bold;
-        width: auto;
-        height: auto;
-    }
-    div.stButton > button:first-child:hover {
-        background-color: #8bc9d1;
-        border-color: #1fa8b6;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 
 semantic_model = OpenAI(temperature=0.4)
 
@@ -148,19 +114,9 @@ def update_intimacy_score(response_text):
     print(f"Updated Intimacy Score: {st.session_state.intimacy_score}")
 
     current_score = int(round(st.session_state.intimacy_score))
-    st.markdown(
-        f"""
-        <div style="font-size:20px; margin:10px 0;">
-            <span style="color:#ff6b6b;">{"❤️" * current_score}</span>
-            <span style="color:#ddd;">{"🤍" * (6 - current_score)}</span>
-            <span style="color:#666; font-size:14px;">({current_score}/6)</span>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
 
 def check_gift():
-    if st.session_state.intimacy_score >= 3 and not st.session_state.gift_given:
+    if st.session_state.intimacy_score >= 6 and not st.session_state.gift_given:
         st.session_state.gift_given = True
         return True
     return False
@@ -171,46 +127,27 @@ def recognize_speech():
         print("Listening...")
         audio = recognizer.listen(source)
         try:
-            # Try using PocketSphinx (offline) or Google Web Speech API (online)
-            text = recognizer.recognize_google(audio)  # Or use .recognize_sphinx(audio)
+            text = recognizer.recognize_google(audio)
             print(f"Recognized: {text}")
             return text
         except sr.UnknownValueError:
             print("Sorry, I did not understand that.")
-        except sr.RequestError as e:
-            print(f"Could not request results from Google Speech Recognition service; {e}")
-        return None
+            return None
+        except sr.RequestError:
+            print("Sorry, there was an error with the speech recognition service.")
+            return None
 
 def play_audio_file(file_path):
     os.system(f"afplay {file_path}")
-    
-def speak_text(text):
-    try:
-        filename = f"output_{uuid.uuid4().hex}.mp3"
-        tts = gTTS(text, lang='en', slow=False)
-        tts.save("temp.mp3")
 
-        sound = AudioSegment.from_file("temp.mp3")
-        lively_sound = sound.speedup(playback_speed=1.3)
-        lively_sound.export(filename, format="mp3")
-        
-        while not os.path.exists(filename):
-            time.sleep(1.0)
-
-        with open(filename, "rb") as f:
-            audio_data = f.read()
-            b64_audio = base64.b64encode(audio_data).decode()
-
-        audio_html = f"""
-            <audio autoplay>
-                <source src="data:audio/mp3;base64,{b64_audio}" type="audio/mp3">
-            </audio>
-        """
-        st.markdown(audio_html, unsafe_allow_html=True)
-
-        time.sleep(1)  # Still give browser time to play
-    except Exception as e:
-        st.error(f"Failed to speak: {e}")
+def speak_text(text, role_config):
+    play_audio_file(role_config['intro_audio'])
+    command = [
+        'say', '-v', role_config['voice'], 
+        '-r', role_config['rate'], 
+        '[[' + 'pbas ' + role_config['pitch'] + ']] ' + text
+    ]
+    subprocess.call(command)
 
 def get_base64(file_path):
     import base64
@@ -235,7 +172,7 @@ role_configs = {
         "pitch": "60",
         'intro_audio': 'intro5.mp3',
         'persist_directory': 'db5',
-        'gif_cover': 'bird.png'
+        'gif_cover': 'zino.png'
     }
 }
 
@@ -276,94 +213,279 @@ def get_conversational_chain(role):
         document_variable_name="input_documents"
     ), role_config
 
+# Sticker triggers
+sticker_rewards = {
+    "Where do you live? Where is your home? Where do you nest?": {
+        "image": "stickers/home.png",
+        "caption": "🏡 Home Explorer!\nYou've discovered where I live!",
+        "semantic_keywords": ["home", "live", "nest", "habitat", "residence", "dwelling"]
+    },
+    "What do you do in your daily life? What do you do during the day and at night?": {
+        "image": "stickers/routine.png",
+        "caption": "🌙 Daily Life Detective!\nYou've unlocked my secret schedule!",
+        "semantic_keywords": ["daily", "routine", "day", "night", "schedule", "activities"]
+    },
+    "What do you eat for food—and how do you catch it?": {
+        "image": "stickers/food.png",
+        "caption": "🍽️ Food Finder!\nThanks for feeding your curiosity!",
+        "semantic_keywords": ["eat", "food", "diet", "prey", "hunt", "catch", "feed"]
+    },
+    "How can I help you? What do you need from humans to help your species thrive?": {
+        "image": "stickers/helper.png",
+        "caption": "🌱 Species Supporter!\nYou care about our survival!",
+        "semantic_keywords": ["help", "support", "thrive", "survive", "conservation", "protect", "save"]
+    }
+}
+
+def semantic_match(user_input, question_key, reward_details):
+    """
+    Use OpenAI to determine if the user input semantically matches the question key
+    """
+    prompt = f"""
+    Analyze whether the following two questions are similar in meaning:
+    
+    Original question: "{question_key}"
+    User question: "{user_input}"
+    
+    Consider synonyms, paraphrasing, and different ways of asking the same thing.
+    Also consider these relevant keywords: {reward_details.get('semantic_keywords', [])}
+    
+    Are these questions essentially asking the same thing? Respond only with 'yes' or 'no'.
+    """
+    
+    response = semantic_model(prompt)
+    return response.strip().lower() == 'yes'
+
+
 # UI
 def main():
-    st.title('ChatSpecies!')
-    
-    role = st.selectbox("Select the non-human entity!", list(role_configs.keys()))
+    st.set_page_config(layout="wide")
+
+    st.markdown("""
+        <style>
+        .stApp {
+            background: linear-gradient(to right, #cdd5ae 66%, #b7c389 34%);
+        }
+        /* Response box styling with scrollbar */
+        .response-box {
+            background-color: #f2fafb;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
+            margin-top: 20px;
+            max-height: 150px;
+            overflow-y: auto;
+            scrollbar-gutter: stable;
+        }
+        
+        /* Fact-check expander content styling with scrollbar */
+        .stExpander .element-container {
+            max-height: 50px;
+            overflow-y: auto;
+        }
+        
+        /* Custom scrollbar styling for both containers */
+        .response-box::-webkit-scrollbar,
+        .stExpander .element-container::-webkit-scrollbar {
+            width: 10px;
+        }
+        .response-box::-webkit-scrollbar-track,
+        .stExpander .element-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        .response-box::-webkit-scrollbar-thumb,
+        .stExpander .element-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        .response-box::-webkit-scrollbar-thumb:hover,
+        .stExpander .element-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        
+        .bird-image-container {
+            position: fixed;
+            right: 4%;
+            top: 15%;
+            width: 30%;
+            z-index: 1;
+        }
+        .bird-image {
+            transform: scale(1.2);
+            width: 100%;
+            height: auto;
+        }
+        .friendship-score {
+            position: fixed;
+            bottom: 20px;
+            left: calc(45% - 37%);
+            width: 30%;
+            padding: 10px 0;
+            z-index: 100;
+        }
+        .left-column-content {
+            margin-bottom: 100px;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    role = list(role_configs.keys())[0]
     role_config = role_configs[role]
-    
+
     with open(role_config['gif_cover'], "rb") as file:
         img_base64 = base64.b64encode(file.read()).decode("utf-8")
-    st.markdown(
-        f'<img src="data:image/png;base64,{img_base64}" class="normal-image">',
-        unsafe_allow_html=True
-    )
+    st.markdown(f"""
+        <div class="bird-image-container">
+            <img src="data:image/png;base64,{img_base64}" class="bird-image">
+        </div>
+    """, unsafe_allow_html=True)
 
-    if st.button('Start Voice Input'):
-            st.text_input('Apologies, this feature is currently under maintenance!')
-    else:
-        user_input = st.text_input('Start the conversation. What would you like to ask?')
-    
-    if user_input:
-        vectordb = Chroma(
-            embedding_function=OpenAIEmbeddings(),
-            persist_directory=get_vectordb(role)
-        )
+    left_col, right_col = st.columns([2, 1])
 
-        most_relevant_texts = vectordb.max_marginal_relevance_search(
-            user_input, k=2, fetch_k=6, lambda_mult=1
-        )
-        
-        chain, role_config = get_conversational_chain(role)
-        raw_answer = chain.run(
-            input_documents=most_relevant_texts,
-            question=user_input
-        )
-        answer = re.sub(r'^\s*Answer:\s*', '', raw_answer).strip()
-        
-        gift_triggered = check_gift()
-        gift_message = (
-            "\n\nAfter our wonderful conversation, I feel you deserve something special.\n\n"
-            "Please accept this medal as a symbol of your contribution to Madeira's biodiversity, and may you continue to support our LoGaCuture project!"
-        )
-        
-        st.write(answer)
-        if gift_triggered:
-            st.write(gift_message)
-            
-            col1, col2, col3 = st.columns([1, 3, 1])
-            with col2:
-                st.markdown(
-                    """
-                    <div style="
-                        display: flex;
-                        justify-content: center;
-                        margin: 20px 0;
-                        filter: drop-shadow(0px 4px 8px rgba(0,0,0,0.1));
-                    ">
-                    """,
-                    unsafe_allow_html=True
-                )
-                st.image("gift.png", width=300, caption="LoGaCuture Medallion")
-                st.markdown("</div>", unsafe_allow_html=True)
-
-        speak_text(answer + (gift_message if gift_triggered else ""))
-        update_intimacy_score(user_input)
-        
-        with st.expander("Fact-Checking: Doubtful about the response?"):
-            concept_state = (
-                "Currently a concept idea, it aims to provide users with the original source of the information in the generated responses to increase the transparency and trust of this educational chatbot."
-                )
-
-            st.markdown(
-                f"""
-                <div style="
-                    background: #d6efef;
-                    padding: 10px;
-                    border-radius: 10px;
-                    margin: 10px 0;
-                    text-align: center;
-                    border-left: 4px solid #31c1ce;
-                ">
-                    <p style="font-size: 16px; color: #555;">{concept_state}</p>
+    with left_col:
+        with st.container():
+            st.markdown("""
+                <div style="font-size:50px; font-weight:bold; color:#31333e; margin-bottom:10px;">
+                    Hi! I'm a Zino's Petrel.
                 </div>
-                """,
-                unsafe_allow_html=True
+            """, unsafe_allow_html=True)
+
+            st.markdown("""
+                <div style="font-size:20px; font-weight:bold; color:#31333e; margin-bottom:10px;">
+                    What would you like to ask me?
+                </div>
+            """, unsafe_allow_html=True)
+            
+            user_input = st.text_input(
+                label="Your question", 
+                key='input', 
+                placeholder="Start the conversation!", 
+                label_visibility="collapsed"
             )
-            for i, text in enumerate(most_relevant_texts, 1):
-                st.write(f"*******Excerpt【{i}】********")
-                st.write(text.page_content)
+
+            if user_input:
+                vectordb = Chroma(
+                    embedding_function=OpenAIEmbeddings(),
+                    persist_directory=get_vectordb(role)
+                )
+                most_relevant_texts = vectordb.max_marginal_relevance_search(
+                    user_input, k=2, fetch_k=6, lambda_mult=1
+                )
+                chain, role_config = get_conversational_chain(role)
+                raw_answer = chain.run(input_documents=most_relevant_texts, question=user_input)
+                answer = re.sub(r'^\s*Answer:\s*', '', raw_answer).strip()
+
+                gift_triggered = check_gift()
+                gift_message = (
+                    "\n\nAfter our wonderful conversation, I feel you deserve something special.\n\n"
+                    "Please accept this medal as a symbol of your contribution to Madeira's biodiversity!"
+                )
+                st.markdown(f'<div class="response-box">{answer}</div>', unsafe_allow_html=True)
+                
+                normalized_input = user_input.strip().lower()
+                sticker_awarded = False
+                
+                for q, reward in sticker_rewards.items():
+                    # Check both direct match and semantic similarity
+                    if (normalized_input == q.lower()) or semantic_match(user_input, q, reward):
+                        st.markdown(
+                            f"""
+                            <div style="text-align: center; margin-top: 20px;">
+                                <img src="data:image/png;base64,{base64.b64encode(open(reward["image"], "rb").read()).decode()}" width="100">
+                                <div style="font-size: 16px; color: #444; margin-top: 8px;">{reward["caption"]}</div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+                        sticker_awarded = True
+                        break
+
+                if not sticker_awarded:
+                    for q, reward in sticker_rewards.items():
+                        if any(keyword in normalized_input for keyword in reward.get("semantic_keywords", [])):
+                            st.markdown(
+                                f"""
+                                <div style="text-align: center; margin-top: 20px;">
+                                    <img src="data:image/png;base64,{base64.b64encode(open(reward["image"], "rb").read()).decode()}" width="120">
+                                    <div style="font-size: 16px; color: #444; margin-top: 8px;">{reward["caption"]}</div>
+                                </div>
+                                """,
+                                unsafe_allow_html=True
+                            )
+                            break
+
+                if gift_triggered:
+                    with open("gift.png", "rb") as f:
+                        gift_img_base64 = base64.b64encode(f.read()).decode()
+
+                    gift_html = f"""
+                    <div class="response-box" style="text-align: center;">
+                        <p>{gift_message}</p>
+                        <img src="data:image/png;base64,{gift_img_base64}" width="120" style="margin-top: 10px;" />
+                        <div style="font-size: 16px; color: #444; margin-top: 8px;">
+                            Biodiversity Trailblazer Medal
+                        </div>
+                    </div>
+                    """
+
+                    st.markdown(gift_html, unsafe_allow_html=True)
+
+                speak_text(answer + (gift_message if gift_triggered else ""), role_config)
+                update_intimacy_score(user_input)
+
+                if "chat_history" not in st.session_state:
+                    st.session_state.chat_history = []
+                st.session_state.chat_history.append({"role": "user", "content": user_input})
+                st.session_state.chat_history.append({"role": "assistant", "content": answer})
+
+        current_score = int(round(st.session_state.intimacy_score)) if "intimacy_score" in st.session_state else 0
+        st.markdown(
+            f"""
+            <div class="friendship-score">
+                <div style="font-size:18px; font-style: italic; font-weight:bold; color:#31333e; text-align: left;">Friendship Score!</div>
+                <div style="font-size:16px; color:#31333e; text-align: left;">Unlock special stickers with your interactions</div>
+                <div style="font-size:24px; margin:5px 0; text-align: left;">
+                    <span style="color:#ff6b6b;">{'❤️' * current_score}</span>
+                    <span style="color:#ddd;">{'🤍' * (6 - current_score)}</span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+    with right_col:
+        st.markdown("<div style='margin-top: 560px;'></div>", unsafe_allow_html=True)
+
+        spacer_col, content_col, _ = st.columns([0.8, 9, 1])
+        with content_col:
+            st.markdown("""
+                <div style="font-size:18px; font-style: italic; font-weight:bold; color:#31333e; text-align: left;">
+                    Doubtful about the response?
+                </div>
+            """, unsafe_allow_html=True)
+            
+            with st.expander("Fact-Check this answer", expanded=False):
+                if "most_relevant_texts" in locals():
+                    concept_state = (
+                        "This is an concept idea. The following text is drawn from authoritative knowledge bases. "
+                    )
+                    st.markdown(f"""
+                        <div style="
+                            background: #d6efef;
+                            padding: 20px;
+                            border-radius: 10px;
+                            margin: 10px 0;
+                            text-align: center;
+                            border-left: 4px solid #31c1ce;
+                        ">
+                            <p style="font-size: 16px; color: #555;">{concept_state}</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+
+                    st.write(most_relevant_texts[0].page_content)
+                else:
+                    st.info("Ask me a question to see the fact-check results based on scientific knowledge!")
 
 
 if __name__ == "__main__":
