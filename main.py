@@ -372,7 +372,7 @@ def main():
         with st.container():
             st.markdown("""
                 <div style="font-size:50px; font-weight:bold; color:#31333e; margin-bottom:10px;">
-                    Hello there! I'm Alberto the Zino's Petrel.
+                    Hello! I'm Alberto the Zino's Petrel.
                 </div>
             """, unsafe_allow_html=True)
 
