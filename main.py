@@ -337,9 +337,9 @@ def main():
         }
         .user-input-box {
             background-color: #cdd5ae;
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 10px;
+            padding: 5px;
+            border-radius: 1px;
+            margin-bottom: 5px;
         }
         .friendship-score {
             position: fixed;
