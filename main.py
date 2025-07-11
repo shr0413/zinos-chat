@@ -312,7 +312,7 @@ def main():
     if 'gift_given' not in st.session_state:
         st.session_state.gift_given = False
         
-    st.set_page_config(layout="tighter control")
+    st.set_page_config(layout="wide")
 
     # CSS styles
     st.markdown("""
