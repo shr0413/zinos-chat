@@ -562,7 +562,7 @@ def main():
                 with col2:
                     submit_button = st.form_submit_button(label="Ask Zena")
                 with col3:
-                    tips_button = st.form_submit_button("💡 Tips", use_container_width=True)
+                    tips_button = st.form_submit_button("Tips", use_container_width=True)
 
                 if tips_button:
                     st.session_state.show_score_guide = not st.session_state.show_score_guide
