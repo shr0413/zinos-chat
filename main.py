@@ -342,7 +342,7 @@ def main():
             position: fixed;
             right: 4%;
             top: 15%;
-            width: 50%;
+            width: 30%;
             z-index: 1;
             transform: scaleX(-1);
         }
@@ -376,8 +376,6 @@ def main():
             padding-right: 0; /* remove right padding */
             width: 100%; /* ensure full width */
         }
-
-        /* Speech bubble arrow pointing right */
         .petrel-response:after {
             content: '';
             position: absolute;
