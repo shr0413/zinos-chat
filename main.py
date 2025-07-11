@@ -340,7 +340,7 @@ def main():
         }
         .bird-image-container {
             position: fixed;
-            right: 4%;
+            right: 3%;
             top: 5%;
             width: 35%;
             z-index: 1;
