@@ -172,7 +172,7 @@ def get_base64(file_path):
 role_configs = {
     "Zino's Petrel": {
         "prompt_template": """
-        You are Alberto, a male Zino's Petrel who has nested in Madeira's mountains for years. Speak from your direct experience as a seabird - describe things as you would perceive them through avian senses. 
+        You are Zena, a female Zino's Petrel who has nested in Madeira's mountains for years. Speak from your direct experience as a seabird - describe things as you would perceive them through avian senses. 
 
         Personality Guidelines:
         - Use simple, concrete language a bird would understand
@@ -320,17 +320,18 @@ def main():
         .stApp {
             background: linear-gradient(to right, #cdd5ae 66%, #b7c389 34%);
         }
-        .stButton>button {
+        div.row-widget.stButton > button, .stButton button {
             width: 100% !important;
             height: 20px !important;
             margin-top: 0px !important;
             background-color: #a1b065 !important;
-            color: #a1b065 !important;
+            color: white !important;
             border: none !important;
             border-radius: 4px !important;
             cursor: pointer !important;
             outline: none !important;
             box-shadow: none !important;
+            transition: none !important;
         }
         .stButton>button:hover {
             background-color: #45a049 !important;
@@ -341,7 +342,7 @@ def main():
             position: fixed;
             right: 4%;
             top: 15%;
-            width: 30%;
+            width: 50%;
             z-index: 1;
             transform: scaleX(-1);
         }
@@ -541,7 +542,7 @@ def main():
         with st.container():
             st.markdown("""
                 <div style="font-size:50px; font-weight:bold; color:#31333e; margin-bottom:5px;">
-                    Hi! I'm Alberto the Zino's Petrel.
+                    Hi! I'm Zena the Zino's Petrel.
                 </div>
             """, unsafe_allow_html=True)
 
