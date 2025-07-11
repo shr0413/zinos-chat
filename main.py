@@ -459,7 +459,6 @@ def main():
             margin-top: 8px;
         }
         
-        /* Gift medal styling */
         .gift-box {
             text-align: center;
             margin-top: 10px;
@@ -539,7 +538,7 @@ def main():
     with left_col:
         with st.container():
             st.markdown("""
-                <div style="font-size:50px; font-weight:bold; color:#31333e; margin-bottom:5px;">
+                <div style="font-size:50px; font-weight:bold; color:#31333e; margin-bottom:0px; line-height: 0.5;">
                     Hi! I'm Zena the Zino's Petrel.
                 </div>
             """, unsafe_allow_html=True)
