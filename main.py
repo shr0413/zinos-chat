@@ -312,7 +312,7 @@ def main():
     if 'gift_given' not in st.session_state:
         st.session_state.gift_given = False
         
-    st.set_page_config(layout="wide")
+    st.set_page_config(layout="tighter control")
 
     # CSS styles
     st.markdown("""
@@ -551,7 +551,7 @@ def main():
             """, unsafe_allow_html=True)
             
             with st.form(key='message_form'):
-                col1, col2, col3 = st.columns([5, 1, 1])
+                col1, col2, col3 = st.beta_columns([5, 1, 1])
                 with col1:
                     user_input = st.text_input(
                         label="Your question", 
