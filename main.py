@@ -325,7 +325,7 @@ def main():
             height: 20px !important;
             margin-top: 0px !important;
             background-color: #a1b065 !important;
-            color: white !important;
+            color: #a1b065 !important;
             border: none !important;
             border-radius: 4px !important;
             cursor: pointer !important;
@@ -361,16 +361,12 @@ def main():
             float: right;
             clear: both;
         }
-
-        /* Inner scrollable container */
         .petrel-response .scroll-content {
             max-height: 120px;
             overflow-y: auto;
             direction: rtl; /* move scrollbar to the left */
             padding-right: 2px;
         }
-
-        /* Reset text direction inside scroll content */
         .petrel-response .scroll-content {
             max-height: 120px;
             overflow-y: auto;
@@ -451,8 +447,6 @@ def main():
             border-top: 0;
             z-index: -1;
         }
-
-        /* Sticker reward styling */
         .sticker-reward {
             text-align: center;
             margin-top: 20px;
@@ -547,7 +541,7 @@ def main():
         with st.container():
             st.markdown("""
                 <div style="font-size:50px; font-weight:bold; color:#31333e; margin-bottom:5px;">
-                    Hi! I'm a Zino's Petrel.
+                    Hi! I'm Alberto the Zino's Petrel.
                 </div>
             """, unsafe_allow_html=True)
 
@@ -558,7 +552,7 @@ def main():
             """, unsafe_allow_html=True)
             
             with st.form(key='message_form'):
-                col1, col2, col3 = st.columns([5, 1, 0.9])
+                col1, col2, col3 = st.columns([5, 1, 1])
                 with col1:
                     user_input = st.text_input(
                         label="Your question", 
