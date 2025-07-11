@@ -707,7 +707,7 @@ def main():
             """, unsafe_allow_html=True)
 
     with right_col:
-        st.markdown("<div style='margin-top: 500px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='margin-top: 460px;'></div>", unsafe_allow_html=True)
 
         spacer_col, content_col, _ = st.columns([0.8, 9, 1])
         with content_col:
