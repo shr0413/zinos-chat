@@ -342,7 +342,7 @@ def main():
             position: fixed;
             right: 4%;
             top: 15%;
-            width: 40%;
+            width: 35%;
             z-index: 1;
             transform: scaleX(-1);
         }
