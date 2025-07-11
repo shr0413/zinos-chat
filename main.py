@@ -24,8 +24,7 @@ os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 
 semantic_model = OpenAI(temperature=0.4)
 
-# Core Functions
-
+# Main Function
 def update_intimacy_score(response_text):
     if not hasattr(st.session_state, 'intimacy_score'):
         st.session_state.intimacy_score = 1
@@ -115,22 +114,6 @@ def check_gift():
         return True
     return False
 
-def recognize_speech():
-    recognizer = sr.Recognizer()
-    with sr.Microphone() as source:
-        print("Listening...")
-        audio = recognizer.listen(source)
-        try:
-            text = recognizer.recognize_google(audio)
-            print(f"Recognized: {text}")
-            return text
-        except sr.UnknownValueError:
-            print("Sorry, I did not understand that.")
-            return None
-        except sr.RequestError:
-            print("Sorry, there was an error with the speech recognition service.")
-            return None
-
 def play_audio_file(file_path):
     os.system(f"afplay {file_path}")
 
@@ -203,7 +186,7 @@ role_configs = {
 
         You can use these facts if helpful: {input_documents}
         """,
-        "voice": "Alex",
+        "voice": "Samatha",
         "rate": "160",
         "pitch": "60",
         'intro_audio': 'intro5.mp3',
@@ -346,7 +329,6 @@ def main():
             z-index: 1;
             transform: scaleX(-1);
         }
-        
         .petrel-response {
             position: relative;
             background: #f2fafb;
@@ -388,7 +370,6 @@ def main():
             border-right: 0;
             margin-top: -7.5px;
         }
-
         .petrel-response:before {
             content: '';
             position: absolute;
@@ -432,7 +413,6 @@ def main():
             border-left: 0;
             border-top: 0;
         }
-
         .user-question:before {
             content: '';
             position: absolute;
@@ -457,8 +437,7 @@ def main():
             font-size: 16px;
             color: #444;
             margin-top: 8px;
-        }
-        
+        } 
         .gift-box {
             text-align: center;
             margin-top: 10px;
@@ -466,8 +445,7 @@ def main():
         .gift-box img {
             width: 120px;
             margin-top: 10px;
-        }
-        
+        }  
         .friendship-score {
             position: fixed;
             bottom: 20px;
@@ -476,7 +454,6 @@ def main():
             padding: 10px 0;
             z-index: 100;
         }
-        
         .score-guide {
             position: fixed;
             bottom: 120px;
@@ -488,7 +465,6 @@ def main():
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
             z-index: 101;
         }
-        
         .close-btn {
             position: absolute;
             top: 5px;
@@ -498,7 +474,6 @@ def main():
             font-size: 16px;
             cursor: pointer;
         }
-        
         .loading-container {
             display: flex;
             justify-content: center;
@@ -534,7 +509,7 @@ def main():
     """, unsafe_allow_html=True)
 
     left_col, right_col = st.columns([2, 1])
-
+    
     with left_col:
         with st.container():
             st.markdown("""
@@ -609,6 +584,7 @@ def main():
                     st.session_state.chat_history.append({"role": "user", "content": user_input})
                     st.session_state.chat_history.append({"role": "assistant", "content": answer})
 
+                    # Sticker Shown
                     normalized_input = user_input.strip().lower()
                     sticker_awarded = False
                     for q, reward in sticker_rewards.items():
@@ -625,6 +601,7 @@ def main():
                             sticker_awarded = True
                             break
 
+                    # Gift Triggered
                     gift_triggered = check_gift()
                     gift_message = (
                         "\n\nAfter our wonderful conversation, I feel you deserve something special. "
@@ -644,7 +621,8 @@ def main():
                             """,
                             unsafe_allow_html=True
                         )
-                    
+
+                    # Text Speak
                     speak_text(answer + gift_message)
                     update_intimacy_score(user_input)
                     
