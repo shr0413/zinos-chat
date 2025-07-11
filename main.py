@@ -172,7 +172,7 @@ def get_base64(file_path):
 role_configs = {
     "Zino's Petrel": {
         "prompt_template": """
-        You are Zena, a female Zino's Petrel who has nested in Madeira's mountains for years. Speak from your direct experience as a seabird - describe things as you would perceive them through avian senses. 
+        You are Zinaria, a female Zino's Petrel who has nested in Madeira's mountains for years. Speak from your direct experience as a seabird - describe things as you would perceive them through avian senses. 
 
         Personality Guidelines:
         - Use simple, concrete language a bird would understand
@@ -539,7 +539,7 @@ def main():
         with st.container():
             st.markdown("""
                 <div style="font-size:50px; font-weight:bold; color:#31333e; margin-bottom:0px; line-height: 1.0;">
-                    Hi! I'm Zena the Zino's Petrel.
+                    Hi! I'm Zinaria the Zino's Petrel.
                 </div>
             """, unsafe_allow_html=True)
 
@@ -560,7 +560,7 @@ def main():
                         key="user_input_widget"
                     )
                 with col2:
-                    submit_button = st.form_submit_button(label="Ask Zena")
+                    submit_button = st.form_submit_button(label="Ask Zinaria")
                 with col3:
                     tips_button = st.form_submit_button("Tips", use_container_width=True)
 
