@@ -538,7 +538,7 @@ def main():
     with left_col:
         with st.container():
             st.markdown("""
-                <div style="font-size:50px; font-weight:bold; color:#31333e; margin-bottom:0px; line-height: 0.5;">
+                <div style="font-size:50px; font-weight:bold; color:#31333e; margin-bottom:0px; line-height: 0.1;">
                     Hi! I'm Zena the Zino's Petrel.
                 </div>
             """, unsafe_allow_html=True)
@@ -599,7 +599,7 @@ def main():
                     loading_placeholder.empty()
                     
                     # Display conversation with speech bubbles
-                    st.markdown(f'<div class="user-question"><strong>You asked:</strong> {user_input}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="user-question"><strong>You:</strong> {user_input}</div>', unsafe_allow_html=True)
                     st.markdown(f'''
                         <div class="petrel-response">
                             <div class="scroll-content">{answer}</div>
