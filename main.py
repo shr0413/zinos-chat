@@ -593,8 +593,10 @@ def main():
                     chain, role_config = get_conversational_chain(role)
                     raw_answer = chain.run(input_documents=most_relevant_texts, question=user_input)
                     answer = re.sub(r'^\s*Answer:\s*', '', raw_answer).strip()
-                    
-                    # Clear loading indicator
+
+                    st.session_state.most_relevant_texts = vectordb.max_marginal_relevance_search(
+                        user_input, k=2, fetch_k=6, lambda_mult=1)
+                        
                     loading_placeholder.empty()
                     
                     # Display conversation with speech bubbles
@@ -717,7 +719,7 @@ def main():
             """, unsafe_allow_html=True)
             
             with st.expander("Fact-Check this answer", expanded=False):
-                if "most_relevant_texts" in locals():
+                if "most_relevant_texts" in st.session_state:  # Check session state instead of locals()
                     concept_state = (
                         "This is an concept idea. The following text is drawn from authoritative knowledge bases. "
                     )
@@ -733,7 +735,9 @@ def main():
                             <p style="font-size: 16px; color: #555;">{concept_state}</p>
                         </div>
                     """, unsafe_allow_html=True)
-                    st.write(most_relevant_texts[0].page_content)
+                    # Display the first relevant document
+                    if len(st.session_state.most_relevant_texts) > 0:
+                        st.write(st.session_state.most_relevant_texts[0].page_content)
                 else:
                     st.info("Ask me a question to see the fact-check results based on scientific knowledge!")
 
