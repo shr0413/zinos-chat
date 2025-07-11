@@ -550,7 +550,7 @@ def main():
             """, unsafe_allow_html=True)
             
             with st.form(key='message_form'):
-                col1, col2, col3 = st.columns([5, 1, 1])
+                col1, col2, col3 = st.columns([5, 1, 0.6])
                 with col1:
                     user_input = st.text_input(
                         label="Your question", 
