@@ -384,6 +384,11 @@ def main():
         [class*="st-key-user"] {
             dispay: flex;
             flex-direction: row-reverse;
+            p {
+                font-size: 1.125rem;
+                color: black;
+                font-weight: medium;
+            }
         }
                 
         .stChatMessage {
@@ -391,16 +396,22 @@ def main():
         }
 
         [class*="st-key-assistant"] {
-            background-color: #b7c389;
+            background-color: #345e42;
             border-radius: 16px 16px 16px 0;
             padding-right: 16px;
             border-color: white !important;
             border-width: 2px;
+                
+            p {
+                font-size: 1.125rem;
+                color: white;
+                font-weight: medium;
+            }
         }
         
         .st-key-chat_section{
-                display: flex;
-                flex-direction: column-reverse;
+            display: flex;
+            flex-direction: column-reverse;
         }
         /* Remove red border outline from chat input when active */
         .stChatInput div[data-testid="stChatInput"] > div:focus-within {
