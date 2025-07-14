@@ -18,6 +18,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+import streamlit.components.v1 as components
 
 
 os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
@@ -120,7 +121,7 @@ def play_audio_file(file_path):
 def speak_text(text, loading_placeholder=None):
     try:
         audio_id = uuid.uuid4().hex
-        filename = f"output_{uuid.uuid4().hex}.mp3"
+        filename = f"output_{audio_id}.mp3"
 
         # Keep loading indicator visible during TTS generation
         if loading_placeholder:
@@ -147,17 +148,53 @@ def speak_text(text, loading_placeholder=None):
             loading_placeholder.empty()
 
         audio_html = f"""
-            <audio id="{audio_id}" autoplay hidden>
+            <audio id="{audio_id}" autoplay>
                 <source src="data:audio/mp3;base64,{b64_audio}" type="audio/mp3">
             </audio>
+            <script>
+                // Better audio playback with visual indicator for short clips
+                document.addEventListener('DOMContentLoaded', function() {{
+                    const audio = document.getElementById('{audio_id}');
+                    if (audio) {{
+                        // Add event listeners to track playback
+                        audio.addEventListener('play', function() {{
+                            console.log('Audio started playing');
+                        }});
+                        
+                        audio.addEventListener('ended', function() {{
+                            console.log('Audio finished playing');
+                        }});
+                        
+                        // Force playback to start
+                        const playPromise = audio.play();
+                        if (playPromise !== undefined) {{
+                            playPromise.catch(error => {{
+                                console.log("Audio playback failed:", error);
+                                // Try again after a short delay
+                                setTimeout(() => audio.play().catch(e => console.log(e)), 1000);
+                            }});
+                        }}
+                    }}
+                }});
+            </script>
         """
-        audio_container = st.empty()
-        audio_container.markdown(audio_html, unsafe_allow_html=True)
-        
+        components.html(audio_html)
+        print(f"Playing audio file: {filename}")
         time.sleep(1)  # Still give browser time to play
-        os.remove(filename)
     except Exception as e:
         st.error(f"Failed to speak: {e}")
+
+def cleanup_audio_files():
+    try:
+        # Find and remove old audio files
+        for file in os.listdir('.'):
+            if file.startswith('output_') and file.endswith('.mp3'):
+                # Check if file is older than 5 seconds
+                file_age = time.time() - os.path.getmtime(file)
+                if file_age > 5:
+                    os.remove(file)
+    except Exception as e:
+        print(f"Error cleaning up audio files: {e}")
 
 def get_base64(file_path):
     import base64
@@ -291,7 +328,6 @@ def semantic_match(user_input, question_key, reward_details):
 
 def chat_message(name):
     if name == "assistant":
-        # Use a unique key for each assistant message to avoid conflicts
         return st.container(key=f"{name}-{uuid.uuid4()}").chat_message(name=name, avatar="zino.png", width="content")
     else:
         return st.container(key=f"{name}-{uuid.uuid4()}").chat_message(name=name, avatar=":material/face:", width="content")
@@ -563,8 +599,8 @@ def main():
         
         input_section_col1, input_section_col2, input_section_col3 = st.columns([0.6, 0.1, 0.3], gap="small")
         with input_section_col1:
-            user_input = st.chat_input("Make another question!" if st.session_state.has_interacted else "Start the conversation!")
-            st.session_state.last_question = user_input
+            user_input = st.chat_input(placeholder="Make a question!")
+            print(f"User input: {user_input}")
         with input_section_col2:
             if st.button("Tips", icon=":material/lightbulb:", help="Click to see tips on how to get a higher Friendship Score!", use_container_width=True, type="primary"):
                 st.session_state.show_score_guide = True
@@ -592,39 +628,75 @@ def main():
         
 
         if user_input:
-            st.session_state.processing = True
-            st.session_state.has_interacted = True
-            st.session_state.chat_history.append({"role": "user", "content": user_input})
-
-            with chatSection:
-                with chat_message("user"):
-                    st.markdown(user_input)
+            try:
+                # Set processing state first
+                st.session_state.processing = True
+                st.session_state.has_interacted = True
+                
+                # Store the input for this session
+                current_input = user_input
+                
+                # Add to chat history immediately
+                st.session_state.chat_history.append({"role": "user", "content": current_input})
+                st.session_state.last_question = current_input
+                
+                # Display user message
+                with chatSection:
+                    with chat_message("user"):
+                        st.markdown(current_input)
+                
+                with chatSection:
+                    loading_placeholder = st.empty()
+                    with st.spinner(""):
+                        loading_placeholder.markdown("""
+                            <div class="loading-container">
+                                <div class="loading-spinner"></div>
+                                <div>Thinking about your question...</div>
+                            </div>
+                        """, unsafe_allow_html=True)
+                
+                # Process response
+                try:
+                    vectordb = Chroma(embedding_function=OpenAIEmbeddings(), persist_directory=get_vectordb(role))
+                    most_relevant_texts = vectordb.max_marginal_relevance_search(current_input, k=2, fetch_k=6, lambda_mult=1)
+                    chain, role_config = get_conversational_chain(role)
+                    raw_answer = chain.run(input_documents=most_relevant_texts, question=current_input)
+                    answer = re.sub(r'^\s*Answer:\s*', '', raw_answer).strip()
+                    
+                    # Save results to session state
+                    st.session_state.most_relevant_texts = most_relevant_texts
+                    st.session_state.chat_history.append({"role": "assistant", "content": answer})
+                    update_intimacy_score(current_input)
+                    gift_triggered = check_gift()
+                    # Generate and play audio
+                    speak_text(answer, loading_placeholder)
+                    
+                    # Display assistant message
+                    with chatSection:
+                        with chat_message("assistant"):
+                            st.markdown(answer)
+                            
+                    st.session_state.audio_played = True
+                    st.session_state.processing = False
+                    
+                except Exception as e:
+                    # Handle processing errors
+                    print(f"Error processing response: {str(e)}")
+                    if loading_placeholder:
+                        loading_placeholder.empty()
+                        
+                    error_msg = "I'm sorry, I had trouble processing that. Could you try again?"
+                    st.session_state.chat_history.append({"role": "assistant", "content": error_msg})
+                    
+                    with chatSection:
+                        with chat_message("assistant"):
+                            st.markdown(error_msg)
+                            st.error(f"Error details: {str(e)}")
             
-            with chatSection:
-                loading_placeholder = st.empty()
-                with st.spinner(""):
-                    loading_placeholder.markdown("""
-                        <div class="loading-container">
-                            <div class="loading-spinner"></div>
-                            <div>Thinking about your question...</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-
-            vectordb = Chroma(embedding_function=OpenAIEmbeddings(), persist_directory=get_vectordb(role))
-            most_relevant_texts = vectordb.max_marginal_relevance_search(user_input, k=2, fetch_k=6, lambda_mult=1)
-            chain, role_config = get_conversational_chain(role)
-            raw_answer = chain.run(input_documents=most_relevant_texts, question=user_input)
-            answer = re.sub(r'^\s*Answer:\s*', '', raw_answer).strip()
-            
-            st.session_state.most_relevant_texts = vectordb.max_marginal_relevance_search(user_input, k=2, fetch_k=6, lambda_mult=1)
-            st.session_state.chat_history.append({"role": "assistant", "content": answer})
-            update_intimacy_score(user_input)
-            
-            speak_text(answer, loading_placeholder)
-            with chatSection:
-                with chat_message("assistant"):
-                    st.markdown(answer)
-            st.session_state.audio_played = True
+            except Exception as outer_e:
+                # Handle any unexpected errors
+                print(f"Outer exception in user input handling: {str(outer_e)}")
+                st.error(f"An unexpected error occurred: {str(outer_e)}")
             
            
         # Show guide if toggled
@@ -651,7 +723,26 @@ def main():
                 """, unsafe_allow_html=True)
         if st.session_state.show_score_guide:
             score_guide()
-         
+
+        # Gift section
+        gift_message = "After our wonderful conversation, I feel you deserve something special. \nPlease accept this medal as a symbol of your contribution to Madeira's biodiversity!"
+                    
+        @st.dialog("🎁 Your Gift", width=680)
+        def gift_dialog():
+            with open("gift.png", "rb") as f:
+                gift_img_base64 = base64.b64encode(f.read()).decode()
+            st.markdown(
+                f"""
+                <div class="petrel-response gift-box">
+                    <p>{gift_message}</p>
+                    <img src="data:image/png;base64,{gift_img_base64}">
+                    <div class="sticker-caption">Biodiversity Trailblazer Medal</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        gift_triggered = gift_dialog()
+        
 
     with right_col:
         # Friendship score section
@@ -684,7 +775,7 @@ def main():
                 keywords = reward.get("semantic_keywords", [])
                 keyword_matches = sum(1 for keyword in keywords if keyword.lower() in normalized_input)
                 keyword_match = keyword_matches >= 2
-
+                print(f"Checking question: '{q}' | Exact match: {exact} | Semantic match: {is_semantic_match} | Keyword matches: {keyword_matches} (required: 2)")
                 if exact or is_semantic_match or keyword_match:
                     # Add this sticker to the awarded list if not already present
                     sticker_key = reward["image"]
@@ -694,7 +785,7 @@ def main():
                             "image": reward["image"],
                             "caption": reward["caption"]
                         })
-                        st.toast(reward["caption"], icon="🎉")
+                        st.toast("You earned a new sticker!", icon="⭐")
                     sticker_awarded = True
                     break
         # Display the most recent sticker if any exist
@@ -753,6 +844,7 @@ def main():
                     st.write(st.session_state.most_relevant_texts[0].page_content)
             else:
                 st.info("Ask me a question to see the fact-check results based on scientific knowledge!")
+    cleanup_audio_files()
 
 if __name__ == "__main__":
     main()
