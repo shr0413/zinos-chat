@@ -741,7 +741,8 @@ def main():
                 """,
                 unsafe_allow_html=True
             )
-        gift_triggered = gift_dialog()
+        if st.session_state.gift_given: 
+            gift_dialog()
         
 
     with right_col:
