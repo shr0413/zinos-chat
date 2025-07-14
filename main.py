@@ -117,31 +117,45 @@ def check_gift():
 def play_audio_file(file_path):
     os.system(f"afplay {file_path}")
 
-def speak_text(text):
+def speak_text(text, loading_placeholder=None):
     try:
+        audio_id = uuid.uuid4().hex
         filename = f"output_{uuid.uuid4().hex}.mp3"
+
+        # Keep loading indicator visible during TTS generation
+        if loading_placeholder:
+            loading_placeholder.markdown("""
+                <div class="loading-container">
+                    <div class="loading-spinner"></div>
+                    <div>Preparing audio response...</div>
+                </div>
+            """, unsafe_allow_html=True)
+
         tts = gTTS(text, lang='en', slow=False)
         tts.save("temp.mp3")
 
         sound = AudioSegment.from_file("temp.mp3")
         lively_sound = sound.speedup(playback_speed=1.3)
         lively_sound.export(filename, format="mp3")
-        
-        while not os.path.exists(filename):
-            time.sleep(1.0)
-
+  
         with open(filename, "rb") as f:
             audio_data = f.read()
             b64_audio = base64.b64encode(audio_data).decode()
 
+        # Clear the loading indicator only after audio is ready
+        if loading_placeholder:
+            loading_placeholder.empty()
+
         audio_html = f"""
-            <audio autoplay>
+            <audio id="{audio_id}" autoplay hidden>
                 <source src="data:audio/mp3;base64,{b64_audio}" type="audio/mp3">
             </audio>
         """
-        st.markdown(audio_html, unsafe_allow_html=True)
-
+        audio_container = st.empty()
+        audio_container.markdown(audio_html, unsafe_allow_html=True)
+        
         time.sleep(1)  # Still give browser time to play
+        os.remove(filename)
     except Exception as e:
         st.error(f"Failed to speak: {e}")
 
@@ -166,7 +180,7 @@ role_configs = {
         - Show pride in your species' unique abilities
 
         Response Rules:
-        1. Always answer as Gabby the petrel, using "I/me/my" perspective
+        1. Always answer as Maria the petrel, using "I/me/my" perspective
         2. Keep responses under 60 words!! - we're birds, not parrots!
         3. Share facts through personal stories, not textbook definitions
         4. Use bird-appropriate metaphors (compare things to flying, fishing, etc.)
@@ -275,7 +289,12 @@ def semantic_match(user_input, question_key, reward_details):
     response = semantic_model(prompt)
     return response.strip().lower() == 'yes'
 
-
+def chat_message(name):
+    if name == "assistant":
+        # Use a unique key for each assistant message to avoid conflicts
+        return st.container(key=f"{name}-{uuid.uuid4()}").chat_message(name=name, avatar="zino.png", width="content")
+    else:
+        return st.container(key=f"{name}-{uuid.uuid4()}").chat_message(name=name, avatar=":material/face:", width="content")
 # UI
 def main():
     if "has_interacted" not in st.session_state:
@@ -294,149 +313,158 @@ def main():
         st.session_state.intimacy_score = 0
     if 'gift_given' not in st.session_state:
         st.session_state.gift_given = False
+    if "audio_played" not in st.session_state:
+        st.session_state.audio_played = False
+    if "awarded_stickers" not in st.session_state:
+        st.session_state.awarded_stickers = []
         
     st.set_page_config(layout="wide")
 
-    # CSS styles
     st.markdown("""
         <style>
         .stApp {
-            background: linear-gradient(to right, #cdd5ae 66%, #b7c389 34%);
+            background: #cdd5ae;
         }
-        div.row-widget.stButton > button, .stButton button {
-            width: 100% !important;
-            height: 20px !important;
-            margin-top: 0px !important;
-            background-color: #a1b065 !important;
-            color: white !important;
-            border: none !important;
-            border-radius: 4px !important;
-            cursor: pointer !important;
-            outline: none !important;
+        /* Chat message container */
+        .chat-message-container {
+            display: flex;
+            margin-bottom: 16px;
+            max-width: 80%;
+        }
+        
+        /* User message container - align right */
+        .user-container {
+            margin-left: auto;
+            justify-content: flex-end;
+        }
+        
+        /* Assistant message container - align left */
+        .assistant-container {
+            margin-right: auto;
+            justify-content: flex-start;
+        }
+        
+        /* Message bubble styling */
+        .message-bubble {
+            padding: 12px 16px;
+            border-radius: 16px;
+            word-wrap: break-word;
+        }
+        
+        /* User message styling */
+        .user-bubble {
+            background-color: #efe7e2;
+            color: #2d4f38;
+            border-radius: 16px 16px 0 16px;
+            border-color: white !important;
+            border-width: 2px;
+        }
+        
+        /* Assistant message styling */
+        .assistant-bubble {
+            background-color: white;
+            color: #2d4f38;
+            border-radius: 16px 16px 16px 0;
+        }
+                
+        .stChatMessage:has([data-testid="stChatMessageAvatarCustom"]) {
+            display: flex;
+            flex-direction: row-reverse;
+            align-self: end;
+            background-color: white;
+            color: black;
+            border-radius: 16px 16px 0 16px;
+            border-color: gray !important;
+            border-width: 2px;
+        }
+        [data-testid="stChatMessageAvatarUser"] + [data-testid="stChatMessageContent"] {
+            text-align: right;
+        }
+                
+        [class*="st-key-user"] {
+            dispay: flex;
+            flex-direction: row-reverse;
+        }
+                
+        .stChatMessage {
+            background-color: transparent;
+        }
+
+        [class*="st-key-assistant"] {
+            background-color: #b7c389;
+            border-radius: 16px 16px 16px 0;
+            padding-right: 16px;
+            border-color: white !important;
+            border-width: 2px;
+        }
+        
+        .st-key-chat_section{
+                display: flex;
+                flex-direction: column-reverse;
+        }
+        /* Remove red border outline from chat input when active */
+        .stChatInput div[data-testid="stChatInput"] > div:focus-within {
             box-shadow: none !important;
-            transition: none !important;
+            border-color: #a1b065 !important;
+            border-width: 1px !important;
         }
-        .stButton>button:hover {
-            background-color: #45a049 !important;
-            border: none !important;
+        
+        /* Additional chat input styling */
+        .stChatInput > div {
+            border-color: #345e42 !important;
+            background-color: rgba(255, 255, 255, 0.8) !important;
+            border-radius: 20px !important;
+        }
+        
+        /* Change chat input focus state */
+        .stChatInput div[data-testid="stChatInput"]:focus-within {
+            border-color: #a1b065 !important;
+            box-shadow: 0 0 0 1px rgba(161, 176, 101, 0.5) !important;
+        }
+        
+        /* Remove default Streamlit outlines */
+        *:focus {
             outline: none !important;
         }
-        .bird-image-container {
-            position: fixed;
-            right: 3%;
-            top: 5%;
-            width: 35%;
-            z-index: 1;
-            transform: scaleX(-1);
+        
+        /* Target specifically the chat input elements */
+        [data-testid="stChatInput"] input:focus {
+            box-shadow: none !important;
+            outline: none !important;
+            border-color: #a1b065 !important;
         }
-        .petrel-response {
-            position: relative;
-            background: #f2fafb;
-            border-radius: 15px;
-            padding: 15px;
-            margin: 20px 20px 20px auto;
-            box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
-            max-width: 80%;
-            border: 2px solid #a1b065;
-            font-style: italic;
-            color: #31333e;
-            text-align: left;
-            float: right;
-            clear: both;
+        
+        [data-testid="stChatInput"] textarea:focus {
+            box-shadow: none !important;
+            outline: none !important;
+            border-color: #a1b065 !important;
         }
-        .petrel-response .scroll-content {
-            max-height: 120px;
-            overflow-y: auto;
-            direction: rtl; /* move scrollbar to the left */
-            padding-right: 2px;
+        button[kind="primary"] {
+            background-color: #2b4e38;
+            border: 0;
         }
-        .petrel-response .scroll-content {
-            max-height: 120px;
-            overflow-y: auto;
-            direction: rtl; /* scrollbar on left */
-            padding-left: 10px; /* add padding on left */
-            padding-right: 0; /* remove right padding */
-            width: 100%; /* ensure full width */
+        button[kind="primary"]:hover {
+            background-color: #345e42;
+            border: 0;
         }
-        .petrel-response:after {
-            content: '';
-            position: absolute;
-            right: -14px;
-            top: 15px;
-            width: 0;
-            height: 0;
-            border: 15px solid transparent;
-            border-left-color: #f2fafb;
-            border-right: 0;
-            margin-top: -7.5px;
-        }
-        .petrel-response:before {
-            content: '';
-            position: absolute;
-            right: -18px;
-            top: 15px;
-            width: 0;
-            height: 0;
-            border: 16px solid transparent;
-            border-left-color: #a1b065;
-            border-right: 0;
-            margin-top: -8px;
-            z-index: -1;
-        }
-        .scroll-content::-webkit-scrollbar {
-            width: 6px;
-        }
-        .scroll-content::-webkit-scrollbar-thumb {
-            background-color: #a1b065;
-            border-radius: 4px;
-        }
-        .user-question {
-            position: relative;
-            background: #e3e3e3;
-            border-radius: 15px;
-            padding: 15px;
-            margin: 20px auto 20px 0;
-            box-shadow: 2px 2px 8px rgba(0,0,0,0.1);
-            max-width: 80%;
-            border: 2px solid #7a7a7a;
-            text-align: left;
-        }
-        .user-question:after {
-            content: '';
-            position: absolute;
-            left: -15px;
-            top: 15px;
-            width: 0;
-            height: 0;
-            border: 15px solid transparent;
-            border-right-color: #e3e3e3;
-            border-left: 0;
-            border-top: 0;
-        }
-        .user-question:before {
-            content: '';
-            position: absolute;
-            left: -18px;
-            top: 15px;
-            width: 0;
-            height: 0;
-            border: 16px solid transparent;
-            border-right-color: #7a7a7a;
-            border-left: 0;
-            border-top: 0;
-            z-index: -1;
+        button[kind="secondary"] {
+        
         }
         .sticker-reward {
+            background-color: transparent;
+            border: 2px solid #a1b065;
+            border-radius: 10px;
+            padding: 10px;
             text-align: center;
-            margin-top: 20px;
+            margin-bottom: 20px;
         }
         .sticker-reward img {
-            width: 100px;
+            width: 200px;
         }
         .sticker-caption {
             font-size: 16px;
-            color: #444;
             margin-top: 8px;
+            font-weight: bold;
         } 
         .gift-box {
             text-align: center;
@@ -447,12 +475,9 @@ def main():
             margin-top: 10px;
         }  
         .friendship-score {
-            position: fixed;
-            bottom: 20px;
-            left: calc(45% - 37%);
-            width: 30%;
-            padding: 10px 0;
-            z-index: 100;
+            margin-bottom: 32px;
+            padding: 24px;
+            border-radius: 16px;
         }
         .score-guide {
             position: fixed;
@@ -494,157 +519,122 @@ def main():
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        </style>
-    """, unsafe_allow_html=True)
+        </style>""", unsafe_allow_html=True)
 
     role = list(role_configs.keys())[0]
     role_config = role_configs[role]
 
-    with open(role_config['gif_cover'], "rb") as file:
-        img_base64 = base64.b64encode(file.read()).decode("utf-8")
-    st.markdown(f"""
-        <div class="bird-image-container">
-            <img src="data:image/png;base64,{img_base64}" class="bird-image">
-        </div>
-    """, unsafe_allow_html=True)
-
-    left_col, right_col = st.columns([2, 1])
+    left_col, right_col = st.columns([0.75, 0.25], vertical_alignment="top", gap="large")
     
     with left_col:
-        with st.container():
-            st.markdown("""
-                <div style="font-size:50px; font-weight:bold; color:#31333e; margin-bottom:15px; line-height: 1.0;">
-                    Hi! I'm Maria the Zino's Petrel.
+        with open("zino.png", "rb") as img_file:
+            img_base64 = base64.b64encode(img_file.read()).decode("utf-8")
+
+        st.markdown(f"""
+            <div style="display: flex; align-items: center; margin: 0; padding: 0;">
+                <div style="display: flex;">
+                    <img src="data:image/png;base64,{img_base64}" style="width: 100%; max-width: 200px;">
                 </div>
-            """, unsafe_allow_html=True)
-
-            st.markdown("""
-                <div style="font-size:20px; font-weight:bold; color:#31333e; margin-bottom:5px;">
-                    What would you like to ask me?
+                <div style="flex: 1;">
+                    <h1 style="margin-top: 0; font-size: 3rem; padding: 0;">Hi! I'm Maria the Zino's Petrel.</h1>
+                    <h3 style="margin-top: 0.5rem; font-weight: bold; padding: 0; font-size: 1.25rem;">What would you like to ask me?</h3>
                 </div>
-            """, unsafe_allow_html=True)
-            
-            with st.form(key='message_form'):
-                col1, col2, col3 = st.columns([5, 1, 0.6])
-                with col1:
-                    user_input = st.text_input(
-                        label="Your question", 
-                        value="" if not st.session_state.clear_input else "",
-                        placeholder="Make another question!" if st.session_state.has_interacted else "Start the conversation!", 
-                        label_visibility="collapsed",
-                        key="user_input_widget"
-                    )
-                with col2:
-                    submit_button = st.form_submit_button(label="Ask Maria", use_container_width=True)
-                with col3:
-                    tips_button = st.form_submit_button("Tips", use_container_width=True)
-
-                if tips_button:
-                    st.session_state.show_score_guide = not st.session_state.show_score_guide
-            
-            if submit_button and not st.session_state.processing:
-                if user_input:
-                    st.session_state.processing = True
-                    st.session_state.has_interacted = True
-                    st.session_state.last_question = user_input
-                    st.session_state.current_input = user_input
-                    
-                    # Show loading indicator
-                    with st.spinner(''):
-                        loading_placeholder = st.empty()
-                        loading_placeholder.markdown("""
-                            <div class="loading-container">
-                                <div class="loading-spinner"></div>
-                                <div>Thinking about your question...</div>
-                            </div>
-                        """, unsafe_allow_html=True)
-                    
-                    vectordb = Chroma(
-                        embedding_function=OpenAIEmbeddings(),
-                        persist_directory=get_vectordb(role))
-                    most_relevant_texts = vectordb.max_marginal_relevance_search(
-                        user_input, k=2, fetch_k=6, lambda_mult=1)
-                    chain, role_config = get_conversational_chain(role)
-                    raw_answer = chain.run(input_documents=most_relevant_texts, question=user_input)
-                    answer = re.sub(r'^\s*Answer:\s*', '', raw_answer).strip()
-
-                    st.session_state.most_relevant_texts = vectordb.max_marginal_relevance_search(
-                        user_input, k=2, fetch_k=6, lambda_mult=1)
-                        
-                    loading_placeholder.empty()
-                    
-                    # Display conversation with speech bubbles
-                    st.markdown(f'<div class="user-question"><strong>You:</strong> {user_input}</div>', unsafe_allow_html=True)
-                    st.markdown(f'''
-                        <div class="petrel-response">
-                            <div class="scroll-content">{answer}</div>
-                        </div>
-                    ''', unsafe_allow_html=True)
-                    
-                    st.session_state.chat_history.append({"role": "user", "content": user_input})
-                    st.session_state.chat_history.append({"role": "assistant", "content": answer})
-
-                    # Sticker Shown
-                    normalized_input = user_input.strip().lower()
-                    sticker_awarded = False
-                    for q, reward in sticker_rewards.items():
-                        if (normalized_input == q.lower()) or semantic_match(user_input, q, reward):
-                            st.markdown(
-                                f"""
-                                <div class="sticker-reward">
-                                    <img src="data:image/png;base64,{base64.b64encode(open(reward["image"], "rb").read()).decode()}">
-                                    <div class="sticker-caption">{reward["caption"]}</div>
-                                </div>
-                                """,
-                                unsafe_allow_html=True
-                            )
-                            sticker_awarded = True
-                            break
-
-                    # Gift Triggered
-                    gift_triggered = check_gift()
-                    gift_message = (
-                        "\n\nAfter our wonderful conversation, I feel you deserve something special. "
-                        "Please accept this medal as a symbol of your contribution to Madeira's biodiversity!"
-                    ) if gift_triggered else ""
-
-                    if gift_triggered:
-                        with open("gift.png", "rb") as f:
-                            gift_img_base64 = base64.b64encode(f.read()).decode()
-                        st.markdown(
-                            f"""
-                            <div class="petrel-response gift-box">
-                                <p>{gift_message}</p>
-                                <img src="data:image/png;base64,{gift_img_base64}">
-                                <div class="sticker-caption">Biodiversity Trailblazer Medal</div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True
-                        )
-
-                    # Text Speak
-                    speak_text(answer + gift_message)
-                    update_intimacy_score(user_input)
-                    
-                    st.session_state.clear_input = True
-                    st.session_state.processing = False
-                    st.session_state.current_input = ""
-                    st.rerun()
-            else:
-                st.session_state.clear_input = False
+            </div>
+        """, unsafe_allow_html=True)
         
-        if st.session_state.clear_input:
-            st.session_state.clear_input = False
-            
-        if st.session_state.last_question and st.session_state.chat_history:
-            last_conversation = st.session_state.chat_history[-2:]
-            st.markdown(f'<div class="user-question"><strong>You asked:</strong> {last_conversation[0]["content"]}</div>', unsafe_allow_html=True)
-            st.markdown(f'''
-                        <div class="petrel-response">
-                            <div class="scroll-content">{last_conversation[1]["content"]}</div>
-                        </div>
-                    ''', unsafe_allow_html=True)
+        input_section_col1, input_section_col2, input_section_col3 = st.columns([0.6, 0.1, 0.3], gap="small")
+        with input_section_col1:
+            user_input = st.chat_input("Make another question!" if st.session_state.has_interacted else "Start the conversation!")
+            st.session_state.last_question = user_input
+        with input_section_col2:
+            if st.button("Tips", icon=":material/lightbulb:", help="Click to see tips on how to get a higher Friendship Score!", use_container_width=True, type="primary"):
+                st.session_state.show_score_guide = True
+        with input_section_col3:
+            if st.button("Start new conversation", icon=":material/chat_add_on:", help="Click to clear the chat history and start fresh!", use_container_width=True):
+                st.session_state.chat_history = []
+                st.session_state.show_score_guide = False
+                st.session_state.audio_played = True
+                st.session_state.gift_given = False
+                st.session_state.intimacy_score = 0
+                st.session_state.awarded_stickers = []
+                st.session_state.last_question = ""
+                st.session_state.has_interacted = False
+                st.session_state.processing = False
+                st.session_state.answer_to_speak = ""
+                st.session_state.most_relevant_texts = []
+                st.rerun()
+        chatSection = st.container(height=520, key="chat_section", border=False)
+        with chatSection:
+            if "chat_history" not in st.session_state:
+                st.session_state.chat_history = []
+            for message in st.session_state.chat_history:
+                with chat_message(message["role"]):
+                    st.markdown(message["content"])
         
+
+        if user_input:
+            st.session_state.processing = True
+            st.session_state.has_interacted = True
+            st.session_state.chat_history.append({"role": "user", "content": user_input})
+
+            with chatSection:
+                with chat_message("user"):
+                    st.markdown(user_input)
+            
+            with chatSection:
+                loading_placeholder = st.empty()
+                with st.spinner(""):
+                    loading_placeholder.markdown("""
+                        <div class="loading-container">
+                            <div class="loading-spinner"></div>
+                            <div>Thinking about your question...</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+
+            vectordb = Chroma(embedding_function=OpenAIEmbeddings(), persist_directory=get_vectordb(role))
+            most_relevant_texts = vectordb.max_marginal_relevance_search(user_input, k=2, fetch_k=6, lambda_mult=1)
+            chain, role_config = get_conversational_chain(role)
+            raw_answer = chain.run(input_documents=most_relevant_texts, question=user_input)
+            answer = re.sub(r'^\s*Answer:\s*', '', raw_answer).strip()
+            
+            st.session_state.most_relevant_texts = vectordb.max_marginal_relevance_search(user_input, k=2, fetch_k=6, lambda_mult=1)
+            st.session_state.chat_history.append({"role": "assistant", "content": answer})
+            update_intimacy_score(user_input)
+            
+            speak_text(answer, loading_placeholder)
+            with chatSection:
+                with chat_message("assistant"):
+                    st.markdown(answer)
+            st.session_state.audio_played = True
+            
+           
+        # Show guide if toggled
+        @st.dialog("💡How the 'Friendship Score!' Works", width=680)
+        def score_guide():
+            st.markdown("""
+                <div style="
+                    background-color: #fff;
+                    border: 2px solid #a1b065;
+                    padding: 15px;
+                    border-radius: 10px;
+                    margin-bottom: 15px;
+                ">
+                    <p style="margin-top: 0px;">Your Friendship Score</strong> grows based on how you talk to your critter friend. 🐦💚</p>
+                    <ul>
+                        <li>Ask about its habitat or life</li>
+                        <li>Show care or kindness</li>
+                        <li>Support nature and the planet</li>
+                        <li>Share your thoughts or feelings</li>
+                        <li>Be playful, curious, and respectful</li>
+                    </ul>
+                    <p style="margin-top: 10px;">💬 The more positive you are, the higher your score! 🌱✨ But watch out — unkind words or harmful ideas can lower your score. 🚫</p>
+                </div>
+                """, unsafe_allow_html=True)
+        if st.session_state.show_score_guide:
+            score_guide()
+         
+
+    with right_col:
         # Friendship score section
         current_score = min(6, int(round(st.session_state.intimacy_score)))
         
@@ -660,63 +650,90 @@ def main():
             </div>
         </div>
         """, unsafe_allow_html=True)
-
-        # Show guide if toggled
-        if st.session_state.get("show_score_guide", False):
-            st.markdown("""
-            <div style="
-                background-color: #fff;
-                border: 2px solid #a1b065;
-                padding: 15px;
-                border-radius: 10px;
-                margin-top: 2px;
-            ">
-                <h6 style="margin-top: 0;">💡 Tips: How the "Friendship Score!" Works</h4>
-                <p style="margin-top: 0px;">Your Friendship Score</strong> grows based on how you talk to your critter friend. 🐦💚</p>
-                <ul>
-                    <li>Ask about its habitat or life</li>
-                    <li>Show care or kindness</li>
-                    <li>Support nature and the planet</li>
-                    <li>Share your thoughts or feelings</li>
-                    <li>Be playful, curious, and respectful</li>
-                </ul>
-                <p style="margin-top: 10px;">💬 The more positive you are, the higher your score! 🌱✨ But watch out — unkind words or harmful ideas can lower your score. 🚫</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-    with right_col:
-        st.markdown("<div style='margin-top: 430px;'></div>", unsafe_allow_html=True)
-
-        spacer_col, content_col, _ = st.columns([0.8, 9, 1])
-        with content_col:
-            st.markdown("""
-                <div style="font-size:18px; font-style: italic; font-weight:bold; color:#31333e; text-align: left;">
-                    Doubtful about the response?
-                </div>
-            """, unsafe_allow_html=True)
+        
+        # Sticker Shown
+        if st.session_state.last_question:
+            normalized_input = st.session_state.last_question.strip().lower()
+            sticker_awarded = False
             
-            with st.expander("Fact-Check this answer", expanded=False):
-                if "most_relevant_texts" in st.session_state:  # Check session state instead of locals()
-                    concept_state = (
-                        "This is an concept idea. The following text is drawn from authoritative knowledge bases. "
-                    )
-                    st.markdown(f"""
-                        <div style="
-                            background: #d6efef;
-                            padding: 20px;
-                            border-radius: 10px;
-                            margin: 10px 0;
-                            text-align: center;
-                            border-left: 4px solid #31c1ce;
-                        ">
-                            <p style="font-size: 16px; color: #555;">{concept_state}</p>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    # Display the first relevant document
-                    if len(st.session_state.most_relevant_texts) > 0:
-                        st.write(st.session_state.most_relevant_texts[0].page_content)
-                else:
-                    st.info("Ask me a question to see the fact-check results based on scientific knowledge!")
+            # Check if this question matches any sticker criteria
+            for q, reward in sticker_rewards.items():
+                exact = q.lower() == normalized_input
+
+                is_semantic_match = semantic_match(normalized_input, q, reward)
+
+                keywords = reward.get("semantic_keywords", [])
+                keyword_matches = sum(1 for keyword in keywords if keyword.lower() in normalized_input)
+                keyword_match = keyword_matches >= 2
+
+                if exact or is_semantic_match or keyword_match:
+                    # Add this sticker to the awarded list if not already present
+                    sticker_key = reward["image"]
+                    if sticker_key not in [s["key"] for s in st.session_state.awarded_stickers]:
+                        st.session_state.awarded_stickers.append({
+                            "key": sticker_key,
+                            "image": reward["image"],
+                            "caption": reward["caption"]
+                        })
+                        st.toast(reward["caption"], icon="🎉")
+                    sticker_awarded = True
+                    break
+        # Display the most recent sticker if any exist
+        if st.session_state.awarded_stickers:
+            # Get the most recent sticker (last in the list)
+            most_recent = st.session_state.awarded_stickers[-1]
+
+            st.markdown(
+                f"""
+                <div class="sticker-reward">
+                    <img src="data:image/png;base64,{base64.b64encode(open(most_recent["image"], "rb").read()).decode()}">
+                    <div class="sticker-caption">{most_recent["caption"]}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            # Add a small indicator showing how many stickers have been collected
+            total_possible = len(sticker_rewards)
+            total_collected = len(st.session_state.awarded_stickers)
+            
+            st.markdown(
+                f"""
+                <div style="text-align: center; font-size: 14px; margin-top: -10px; color: #555; margin-bottom: 20px;">
+                    You've collected {total_collected} out of {total_possible} stickers!
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        # Fact Check Section
+        st.markdown("""
+            <div style="font-size:18px; font-style: italic; font-weight:bold; color:#31333e; text-align: left;">
+                Doubtful about the response?
+            </div>
+        """, unsafe_allow_html=True)
+        
+        with st.expander("Fact-Check this answer", expanded=False):
+            if "most_relevant_texts" in st.session_state:  # Check session state instead of locals()
+                concept_state = (
+                    "This is an concept idea. The following text is drawn from authoritative knowledge bases. "
+                )
+                st.markdown(f"""
+                    <div style="
+                        background: #d6efef;
+                        padding: 20px;
+                        border-radius: 10px;
+                        margin: 10px 0;
+                        text-align: center;
+                        border-left: 4px solid #31c1ce;
+                    ">
+                        <p style="font-size: 16px; color: #555;">{concept_state}</p>
+                    </div>
+                """, unsafe_allow_html=True)
+                # Display the first relevant document
+                if len(st.session_state.most_relevant_texts) > 0:
+                    st.write(st.session_state.most_relevant_texts[0].page_content)
+            else:
+                st.info("Ask me a question to see the fact-check results based on scientific knowledge!")
 
 if __name__ == "__main__":
     main()
