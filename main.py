@@ -389,6 +389,7 @@ def main():
                 color: black;
                 font-weight: medium;
             }
+                
         }
                 
         .stChatMessage {
@@ -406,6 +407,13 @@ def main():
                 font-size: 1.125rem;
                 color: white;
                 font-weight: medium;
+                padding-left: 4px;
+            }
+                
+            img {
+                display: flex;
+                height: 52px;
+                width: 52px;
             }
         }
         
