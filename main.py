@@ -599,11 +599,33 @@ def main():
         
         input_section_col1, input_section_col2, input_section_col3 = st.columns([0.6, 0.1, 0.3], gap="small")
         with input_section_col1:
-            user_input = st.chat_input(placeholder="Make a question!")
+            user_input = st.chat_input(placeholder="Ask a question!")
             print(f"User input: {user_input}")
         with input_section_col2:
+            # Show guide if toggled
+            @st.dialog("💡How the 'Friendship Score!' Works", width="large")
+            def score_guide():
+                st.markdown("""
+                    <div style="
+                        background-color: #fff;
+                        border: 2px solid #a1b065;
+                        padding: 15px;
+                        border-radius: 10px;
+                        margin-bottom: 15px;
+                    ">
+                        <p style="margin-top: 0px;">Your Friendship Score</strong> grows based on how you talk to your critter friend. 🐦💚</p>
+                        <ul>
+                            <li>Ask about its habitat or life</li>
+                            <li>Show care or kindness</li>
+                            <li>Support nature and the planet</li>
+                            <li>Share your thoughts or feelings</li>
+                            <li>Be playful, curious, and respectful</li>
+                        </ul>
+                        <p style="margin-top: 10px;">💬 The more positive you are, the higher your score! 🌱✨ But watch out — unkind words or harmful ideas can lower your score. 🚫</p>
+                    </div>
+                    """, unsafe_allow_html=True)
             if st.button("Tips", icon=":material/lightbulb:", help="Click to see tips on how to get a higher Friendship Score!", use_container_width=True, type="primary"):
-                st.session_state.show_score_guide = True
+                score_guide()
         with input_section_col3:
             if st.button("Start new conversation", icon=":material/chat_add_on:", help="Click to clear the chat history and start fresh!", use_container_width=True):
                 st.session_state.chat_history = []
@@ -632,7 +654,7 @@ def main():
                 # Set processing state first
                 st.session_state.processing = True
                 st.session_state.has_interacted = True
-                
+                st.session_state.show_score_guide = False
                 # Store the input for this session
                 current_input = user_input
                 
@@ -697,32 +719,7 @@ def main():
                 # Handle any unexpected errors
                 print(f"Outer exception in user input handling: {str(outer_e)}")
                 st.error(f"An unexpected error occurred: {str(outer_e)}")
-            
-           
-        # Show guide if toggled
-        @st.dialog("💡How the 'Friendship Score!' Works", width=680)
-        def score_guide():
-            st.markdown("""
-                <div style="
-                    background-color: #fff;
-                    border: 2px solid #a1b065;
-                    padding: 15px;
-                    border-radius: 10px;
-                    margin-bottom: 15px;
-                ">
-                    <p style="margin-top: 0px;">Your Friendship Score</strong> grows based on how you talk to your critter friend. 🐦💚</p>
-                    <ul>
-                        <li>Ask about its habitat or life</li>
-                        <li>Show care or kindness</li>
-                        <li>Support nature and the planet</li>
-                        <li>Share your thoughts or feelings</li>
-                        <li>Be playful, curious, and respectful</li>
-                    </ul>
-                    <p style="margin-top: 10px;">💬 The more positive you are, the higher your score! 🌱✨ But watch out — unkind words or harmful ideas can lower your score. 🚫</p>
-                </div>
-                """, unsafe_allow_html=True)
-        if st.session_state.show_score_guide:
-            score_guide()
+
 
         # Gift section
         gift_message = "After our wonderful conversation, I feel you deserve something special. \nPlease accept this medal as a symbol of your contribution to Madeira's biodiversity!"
@@ -763,7 +760,7 @@ def main():
         """, unsafe_allow_html=True)
         
         # Sticker Shown
-        if st.session_state.last_question:
+        if st.session_state.last_question and user_input:
             normalized_input = st.session_state.last_question.strip().lower()
             sticker_awarded = False
             
