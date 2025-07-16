@@ -19,10 +19,50 @@ from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import streamlit.components.v1 as components
+from st_supabase_connection import SupabaseConnection
 
+conn = st.connection("supabase",type=SupabaseConnection)
+
+def get_session_id():
+    if "session_id" not in st.session_state:
+        st.session_state.session_id = str(uuid.uuid4())
+    return st.session_state.session_id
+
+def log_interaction(user_input, ai_response, intimacy_score, is_sticker_awarded, gift_given=False):
+    try:
+        session_id = get_session_id()
+        
+        if is_sticker_awarded:
+            # Extract sticker type from the image path (e.g., "stickers/home.png" -> "home")
+            st.session_state.last_sticker = st.session_state.awarded_stickers[-1]["image"].split("/")[-1].split(".")[0]
+        else:
+            st.session_state.last_sticker = None
+
+        # Get response analysis data
+        response_analysis = {}
+        if hasattr(st.session_state, 'last_analysis'):
+            response_analysis = st.session_state.last_analysis
+            
+        # Insert the interaction record
+        data = {
+            "session_id": session_id,
+            "user_msg": user_input,
+            "ai_msg": ai_response,
+            "ai_name": "Maria the Zino's Petrel",
+            "intimacy_score": float(intimacy_score),
+            "sticker_awarded": st.session_state.last_sticker,
+            "gift_given": gift_given,
+            "response_analysis": response_analysis
+        }
+        
+        result = conn.table("interactions").insert(data).execute()
+        print(f"Logged interaction to Supabase: {session_id}")
+        return True
+    except Exception as e:
+        print(f"Failed to log interaction: {str(e)}")
+        return False
 
 os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
-
 semantic_model = OpenAI(temperature=0.4)
 
 # Main Function
@@ -103,6 +143,12 @@ def update_intimacy_score(response_text):
     penalty = max(-1, calculate_penalty)
     
     st.session_state.intimacy_score = max(0, min(6, st.session_state.intimacy_score + positive_points + penalty))
+
+    # Store the analysis results for logging to Supabase
+    st.session_state.last_analysis = {
+        "positive_criteria": evaluation_positive,
+        "negative_criteria": evaluation_negative
+    }
     
     print(f"AI Evaluation: {evaluation_positive} + {evaluation_negative}")
     print(f"Updated Intimacy Score: {st.session_state.intimacy_score}")
@@ -110,7 +156,7 @@ def update_intimacy_score(response_text):
     current_score = int(round(st.session_state.intimacy_score))
 
 def check_gift():
-    if st.session_state.intimacy_score >= 6 and not st.session_state.gift_given:
+    if st.session_state.intimacy_score >= 6 and not st.session_state.gift_given and not st.session_state.gift_shown:
         st.session_state.gift_given = True
         return True
     return False
@@ -353,6 +399,20 @@ def main():
         st.session_state.audio_played = False
     if "awarded_stickers" not in st.session_state:
         st.session_state.awarded_stickers = []
+    if "last_sticker" not in st.session_state:
+        st.session_state.last_sticker = None
+    if "last_analysis" not in st.session_state:
+        st.session_state.last_analysis = {}
+    if "session_id" not in st.session_state:
+        st.session_state.session_id = str(uuid.uuid4())
+    if "last_answer" not in st.session_state:
+        st.session_state.last_answer = ""
+    if "last_question" not in st.session_state:
+        st.session_state.last_question = ""
+    if "newly_awarded_sticker" not in st.session_state:
+        st.session_state.newly_awarded_sticker = False
+    if "gift_shown" not in st.session_state:
+        st.session_state.gift_shown = False
         
     st.set_page_config(layout="wide")
 
@@ -639,6 +699,12 @@ def main():
                 st.session_state.processing = False
                 st.session_state.answer_to_speak = ""
                 st.session_state.most_relevant_texts = []
+                st.session_state.last_answer = ""
+                st.session_state.last_sticker = None
+                st.session_state.last_analysis = {}
+                st.session_state.newly_awarded_sticker = False
+                st.session_state.gift_shown = False
+                del st.session_state["session_id"]
                 st.rerun()
         chatSection = st.container(height=520, key="chat_section", border=False)
         with chatSection:
@@ -684,12 +750,14 @@ def main():
                     chain, role_config = get_conversational_chain(role)
                     raw_answer = chain.run(input_documents=most_relevant_texts, question=current_input)
                     answer = re.sub(r'^\s*Answer:\s*', '', raw_answer).strip()
-                    
+                    st.session_state.last_answer = answer
+
                     # Save results to session state
                     st.session_state.most_relevant_texts = most_relevant_texts
                     st.session_state.chat_history.append({"role": "assistant", "content": answer})
                     update_intimacy_score(current_input)
                     gift_triggered = check_gift()
+
                     # Generate and play audio
                     speak_text(answer, loading_placeholder)
                     
@@ -738,8 +806,10 @@ def main():
                 """,
                 unsafe_allow_html=True
             )
-        if st.session_state.gift_given: 
+        if st.session_state.gift_given and not st.session_state.gift_shown: 
             gift_dialog()
+            st.session_state.gift_shown = True
+            
         
 
     with right_col:
@@ -762,7 +832,8 @@ def main():
         # Sticker Shown
         if st.session_state.last_question and user_input:
             normalized_input = st.session_state.last_question.strip().lower()
-            sticker_awarded = False
+            
+            st.session_state.newly_awarded_sticker = False
             
             # Check if this question matches any sticker criteria
             for q, reward in sticker_rewards.items():
@@ -784,7 +855,7 @@ def main():
                             "caption": reward["caption"]
                         })
                         st.toast("You earned a new sticker!", icon="⭐")
-                    sticker_awarded = True
+                    st.session_state.newly_awarded_sticker = True
                     break
         # Display the most recent sticker if any exist
         if st.session_state.awarded_stickers:
@@ -843,6 +914,16 @@ def main():
             else:
                 st.info("Ask me a question to see the fact-check results based on scientific knowledge!")
     cleanup_audio_files()
+
+    # Log the interaction to Supabase
+    if st.session_state.last_question:
+        log_interaction(
+            user_input=st.session_state.last_question,
+            ai_response=st.session_state.last_answer,
+            intimacy_score=st.session_state.intimacy_score,
+            is_sticker_awarded=st.session_state.newly_awarded_sticker,
+            gift_given=st.session_state.gift_given
+        )
 
 if __name__ == "__main__":
     main()
