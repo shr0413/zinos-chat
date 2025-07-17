@@ -516,6 +516,7 @@ def main():
         .st-key-chat_section{
             display: flex;
             flex-direction: column-reverse;
+            justify-content: flex-end;
         }
         /* Remove red border outline from chat input when active */
         .stChatInput div[data-testid="stChatInput"] > div:focus-within {
