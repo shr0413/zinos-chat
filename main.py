@@ -20,6 +20,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import streamlit.components.v1 as components
 from st_supabase_connection import SupabaseConnection
+import hashlib
 
 conn = st.connection("supabase",type=SupabaseConnection)
 
@@ -943,6 +944,6 @@ def main():
                 gift_given=st.session_state.gift_given
             )
             st.session_state.logged_interactions.add(interaction_key)
-            
+
 if __name__ == "__main__":
     main()
