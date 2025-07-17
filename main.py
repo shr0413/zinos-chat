@@ -658,7 +658,7 @@ def main():
             </div>
         """, unsafe_allow_html=True)
         
-        input_section_col1, input_section_col2, input_section_col3 = st.columns([0.6, 0.1, 0.3], gap="small")
+        input_section_col1, input_section_col2, input_section_col3 = st.columns([0.5, 0.2, 0.3], gap="small")
         with input_section_col1:
             user_input = st.chat_input(placeholder="Ask a question!")
             print(f"User input: {user_input}")
