@@ -855,7 +855,7 @@ def main():
                             "caption": reward["caption"]
                         })
                         st.toast("You earned a new sticker!", icon="⭐")
-                    st.session_state.newly_awarded_sticker = True
+                        st.session_state.newly_awarded_sticker = True
                     break
         # Display the most recent sticker if any exist
         if st.session_state.awarded_stickers:
