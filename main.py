@@ -19,7 +19,7 @@ from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import streamlit.components.v1 as components
-from st_supabase_connection import SupabaseConnection
+from st_supabase_connection import SupabaseConnection, execute_query
 import hashlib
 
 conn = st.connection("supabase",type=SupabaseConnection)
@@ -55,8 +55,8 @@ def log_interaction(user_input, ai_response, intimacy_score, is_sticker_awarded,
             "gift_given": gift_given,
             "response_analysis": response_analysis
         }
-        
-        result = conn.table("interactions").insert(data).execute()
+
+        execute_query(conn.table("interactions").insert(data, count="None"), ttl='0')
         print(f"Logged interaction to Supabase: {session_id}")
         return True
     except Exception as e:
@@ -64,6 +64,7 @@ def log_interaction(user_input, ai_response, intimacy_score, is_sticker_awarded,
         return False
 
 os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+
 semantic_model = OpenAI(temperature=0.4)
 
 # Main Function
@@ -714,8 +715,10 @@ def main():
                 st.session_state.last_analysis = {}
                 st.session_state.newly_awarded_sticker = False
                 st.session_state.gift_shown = False
-                del st.session_state["session_id"]
-                del st.session_state["logged_interactions"]
+                if "session_id" in st.session_state:
+                    del st.session_state["session_id"]
+                if "logged_interactions" in st.session_state:
+                    del st.session_state["logged_interactions"]
                 st.rerun()
         chatSection = st.container(height=520, key="chat_section", border=False)
         with chatSection:
