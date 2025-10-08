@@ -1,17 +1,27 @@
+# ==================== 核心框架 ====================
 langchain==0.2.11
-langchain-openai==0.1.20
 langchain-chroma==0.1.2
 langchain-community==0.2.10
 chromadb
-pypdf
 streamlit
+python-dotenv
+
+# ==================== Qwen 相关（新增）====================
+dashscope>=1.24.6
+numpy
+
+# ==================== 原有依赖 ====================
+pypdf
 tiktoken
 SpeechRecognition==3.10.0
-pysqlite3-binary
-python-dotenv
+# pysqlite3-binary  # Windows/Conda 环境不需要，已从代码中移除
 gTTS
 pydub
-ffmpeg
-SpeechRecognition
+ffmpeg-python
 pocketsphinx
 st-supabase-connection==2.1.1
+
+# ==================== 可选依赖（Day 3-4 需要）====================
+# tavily-python  # 实时搜索（可选）
+# cohere         # 重排序（可选）
+# langchain-openai  # OpenAI 降级（可选）

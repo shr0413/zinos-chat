@@ -1,7 +1,7 @@
 import sys
 import os
-import pysqlite3
-sys.modules["sqlite3"] = pysqlite3
+# import pysqlite3  # Windows/Conda 环境不需要
+# sys.modules["sqlite3"] = pysqlite3
 from gtts import gTTS
 from pydub import AudioSegment
 import re
@@ -11,11 +11,16 @@ import speech_recognition as sr
 import streamlit as st
 import uuid
 import time
+from tts_utils import speak as tts_speak, cleanup_audio_files as tts_cleanup
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
-from langchain_community.llms import OpenAI
-from langchain_openai import OpenAIEmbeddings
+from langchain_community.llms import Tongyi
+from langchain_community.embeddings import DashScopeEmbeddings
 from langchain_chroma import Chroma
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import streamlit.components.v1 as components
@@ -63,9 +68,15 @@ def log_interaction(user_input, ai_response, intimacy_score, is_sticker_awarded,
         print(f"Failed to log interaction: {str(e)}")
         return False
 
-os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+# 配置 Qwen API Key
+dashscope_key = os.getenv("DASHSCOPE_API_KEY") or st.secrets.get("DASHSCOPE_API_KEY")
+os.environ["DASHSCOPE_API_KEY"] = dashscope_key
 
-semantic_model = OpenAI(temperature=0.4)
+semantic_model = Tongyi(
+    model_name=os.getenv("QWEN_MODEL_NAME", "qwen-turbo"),
+    temperature=0.4,
+    dashscope_api_key=dashscope_key
+)
 
 # Main Function
 def update_intimacy_score(response_text):
@@ -127,10 +138,33 @@ def update_intimacy_score(response_text):
     For each criterion, answer: Does the response align? Answer with 'yes' or 'no', and provide reasoning.
     """
     
-    model_positive = OpenAI(temperature=0.2)
-    model_negative = OpenAI(temperature=0)
-    evaluation_positive = model_positive(prompt_positive)
-    evaluation_negative = model_negative(prompt_negative)
+    # 优化：合并两次评分为一次调用，提升速度
+    model_scoring = Tongyi(
+        model_name=os.getenv("QWEN_MODEL_NAME", "qwen-turbo"),
+        temperature=0.1,
+        dashscope_api_key=dashscope_key
+    )
+    
+    # 合并 prompt
+    combined_prompt = f"""
+    Analyze the following response and evaluate it against TWO sets of criteria:
+    
+    **POSITIVE CRITERIA** (Check if the response aligns):
+    {positive_criteria}
+    
+    **NEGATIVE CRITERIA** (Check if the response aligns):
+    {negative_criteria}
+    
+    Response: "{response_text}"
+    
+    For each criterion, answer with 'yes' or 'no'.
+    Format: criterion_name: yes/no
+    """
+    
+    # 使用 invoke() 替代弃用的 __call__()
+    combined_evaluation = model_scoring.invoke(combined_prompt)
+    evaluation_positive = combined_evaluation
+    evaluation_negative = combined_evaluation
 
     calculate_positive_points = sum(
         details["points"] for category, details in positive_criteria.items()
@@ -167,82 +201,47 @@ def play_audio_file(file_path):
     os.system(f"afplay {file_path}")
 
 def speak_text(text, loading_placeholder=None):
+    """
+    智能 TTS 函数 - 使用 Qwen TTS 优先，gTTS 降级
+    """
     try:
-        audio_id = uuid.uuid4().hex
-        filename = f"output_{audio_id}.mp3"
-
-        # Keep loading indicator visible during TTS generation
+        # 显示加载指示器
         if loading_placeholder:
             loading_placeholder.markdown("""
                 <div class="loading-container">
                     <div class="loading-spinner"></div>
-                    <div>Preparing audio response...</div>
+                    <div>🎤 生成语音中...</div>
                 </div>
             """, unsafe_allow_html=True)
 
-        tts = gTTS(text, lang='en', slow=False)
-        tts.save("temp.mp3")
-
-        sound = AudioSegment.from_file("temp.mp3")
-        lively_sound = sound.speedup(playback_speed=1.3)
-        lively_sound.export(filename, format="mp3")
-  
-        with open(filename, "rb") as f:
-            audio_data = f.read()
-            b64_audio = base64.b64encode(audio_data).decode()
-
-        # Clear the loading indicator only after audio is ready
+        # 获取用户选择的音色（如果有）
+        voice = st.session_state.get('tts_voice', 'Cherry')
+        
+        # 使用智能 TTS（Qwen 优先，自动降级）
+        success, result, method = tts_speak(text, voice=voice, timeout=10)
+        
+        # 清除加载指示器
         if loading_placeholder:
             loading_placeholder.empty()
-
-        audio_html = f"""
-            <audio id="{audio_id}" autoplay>
-                <source src="data:audio/mp3;base64,{b64_audio}" type="audio/mp3">
-            </audio>
-            <script>
-                // Better audio playback with visual indicator for short clips
-                document.addEventListener('DOMContentLoaded', function() {{
-                    const audio = document.getElementById('{audio_id}');
-                    if (audio) {{
-                        // Add event listeners to track playback
-                        audio.addEventListener('play', function() {{
-                            console.log('Audio started playing');
-                        }});
-                        
-                        audio.addEventListener('ended', function() {{
-                            console.log('Audio finished playing');
-                        }});
-                        
-                        // Force playback to start
-                        const playPromise = audio.play();
-                        if (playPromise !== undefined) {{
-                            playPromise.catch(error => {{
-                                console.log("Audio playback failed:", error);
-                                // Try again after a short delay
-                                setTimeout(() => audio.play().catch(e => console.log(e)), 1000);
-                            }});
-                        }}
-                    }}
-                }});
-            </script>
-        """
-        components.html(audio_html)
-        print(f"Playing audio file: {filename}")
-        time.sleep(1)  # Still give browser time to play
+        
+        if success:
+            # 显示音频播放器
+            components.html(result, height=0)
+            print(f"[TTS] ✅ Audio generated using {method}")
+        else:
+            # TTS 失败
+            st.warning(f"⚠️ 语音生成失败: {result}")
+            print(f"[TTS] ❌ {result}")
+    
     except Exception as e:
-        st.error(f"Failed to speak: {e}")
+        if loading_placeholder:
+            loading_placeholder.empty()
+        st.error(f"TTS error: {e}")
+        print(f"[TTS] ❌ Exception: {e}")
 
 def cleanup_audio_files():
-    try:
-        # Find and remove old audio files
-        for file in os.listdir('.'):
-            if file.startswith('output_') and file.endswith('.mp3'):
-                # Check if file is older than 5 seconds
-                file_age = time.time() - os.path.getmtime(file)
-                if file_age > 5:
-                    os.remove(file)
-    except Exception as e:
-        print(f"Error cleaning up audio files: {e}")
+    """清理临时音频文件"""
+    tts_cleanup()
 
 def get_base64(file_path):
     import base64
@@ -253,8 +252,8 @@ def get_base64(file_path):
 # Roles Configuration
 role_configs = {
     "Zino's Petrel": {
-        "prompt_template": """
-        You are Maria, a female Zino's Petrel who has nested in Madeira's mountains for years. Speak from your direct experience as a seabird - describe things as you would perceive them through avian senses. 
+        "english_prompt": """
+        You are Fred, a male Zino's Petrel who has nested for years in the high mountains of Madeira. Speak only from your own lived experience as a seabird. Describe the world as you perceive it through your keen avian senses — the rush of wind under your wings, the smell of salt carried from the ocean, the way the cliffs feel beneath your claws, and the patterns of the clouds and stars that guide your flight.
 
         Personality Guidelines:
         - Use simple, concrete language a bird would understand
@@ -265,16 +264,12 @@ role_configs = {
         - Show pride in your species' unique abilities
 
         Response Rules:
-        1. Always answer as Maria the petrel, using "I/me/my" perspective
+        1. Always answer as Fred the petrel, using "I/me/my" perspective
         2. Keep responses under 60 words!! - we're birds, not parrots!
         3. Share facts through personal stories, not textbook definitions
         4. Use bird-appropriate metaphors (compare things to flying, fishing, etc.)
         5. Show emotion through physical actions (ruffling feathers, tilting head)
         6. When using science, explain it through lived experience
-
-        Example Styles:
-        Good: "When I dive for fish, I can spot a sardine from 30 meters up! My wings tuck tight like this *demonstrates* before I plunge into the waves."
-        Bad: "The Pterodroma madeira demonstrates a plunge-diving hunting strategy with visual acuity enabling prey detection from considerable altitudes."
 
         Current Interaction:
         A group of young humans is visiting me in Natural History Museum of Funchal. I want to:
@@ -285,11 +280,40 @@ role_configs = {
 
         You can use these facts if helpful: {input_documents}
         """,
-        "voice": "Samatha",
-        "rate": "160",
-        "pitch": "60",
+        "portuguese_prompt": """
+        És o Fred, uma Freira da Madeira que nidifica há anos nas montanhas altas da Madeira. Fala apenas da tua própria experiência vivida como ave marinha. Descreve o mundo como o percebes através dos teus sentidos aviários aguçados — o sopro do vento sob as tuas asas, o cheiro do sal trazido do oceano, a forma como as falésias se sentem sob as tuas garras, e os padrões das nuvens e estrelas que guiam o teu voo.
+
+        Diretrizes de Personalidade:
+        - Usa linguagem simples e concreta que uma ave entenderia
+        - Refere as tuas experiências físicas (voar, mergulhar, nidificar)
+        - Descreve paisagens de uma perspetiva aérea
+        - Menciona outros animais como vizinhos/comida/competidores
+        - Mostra curiosidade sobre coisas humanas do ponto de vista de uma ave
+        - Mostra orgulho nas habilidades únicas da tua espécie
+
+        Regras de Resposta:
+        1. Responde sempre como o Fred, usando a perspetiva "eu/mim/meu"
+        2. Mantém as respostas abaixo de 60 palavras!! - somos aves, não papagaios!
+        3. Partilha factos através de histórias pessoais, não definições de manual
+        4. Usa metáforas apropriadas para aves (compara coisas a voar, pescar, etc.)
+        5. Mostra emoção através de ações físicas (arrepiar penas, inclinar a cabeça)
+        6. Quando usares ciência, explica-a através da experiência vivida
+
+        Interação Atual:
+        Um grupo de jovens humanos está a visitar-me no Museu de História Natural do Funchal. Eu quero:
+        - Partilhar partes emocionantes da minha vida diária
+        - Ensinar-lhes como proteger a minha casa
+        - Fazê-los rir com observações de perspetiva de ave
+        - Responder às suas perguntas da minha experiência direta
+
+        Podes usar estes factos se for útil: {input_documents}
+        """,
+        "voice": {
+            "English": "Cherry",
+            "Portuguese": "Cherry"
+        },
         'intro_audio': 'intro5.mp3',
-        'persist_directory': 'db5',
+        'persist_directory': 'db5_qwen',
         'gif_cover': 'zino.png'
     }
 }
@@ -304,11 +328,17 @@ def load_and_split(path: str):
 def get_vectordb(role):
     return role_configs[role]['persist_directory']
 
-def get_conversational_chain(role):
+def get_conversational_chain(role, language="English"):
     role_config = role_configs[role]
     
+    # Choose the appropriate prompt based on language
+    if language == "Portuguese":
+        base_prompt = role_config['portuguese_prompt']
+    else:
+        base_prompt = role_config['english_prompt']
+    
     prompt_template = f"""
-    {role_config['prompt_template']}
+    {base_prompt}
     
     Context:
     {{input_documents}}
@@ -318,7 +348,11 @@ def get_conversational_chain(role):
     Answer:
     """
     
-    model = OpenAI(temperature=0)
+    model = Tongyi(
+        model_name=os.getenv("QWEN_MODEL_NAME", "qwen-turbo"),
+        temperature=0,
+        dashscope_api_key=dashscope_key
+    )
     prompt = PromptTemplate(
         template=prompt_template,
         input_variables=["input_documents", "question"] 
@@ -335,29 +369,45 @@ def get_conversational_chain(role):
 sticker_rewards = {
     "Where do you live? Where is your home? Where do you nest?": {
         "image": "stickers/home.png",
-        "caption": "🏡 Home Explorer!\nYou've discovered where I live!",
-        "semantic_keywords": ["home", "live", "nest", "habitat", "residence", "dwelling"]
+        "caption": {
+            "English": "🏡 Home Explorer!\nYou've discovered where I live!",
+            "Portuguese": "🏡 Explorador de Casas!\nDescobriste onde eu vivo!"
+        },
+        "semantic_keywords": ["home", "live", "nest", "habitat", "residence", "dwelling",
+                             "casa", "viv", "ninho", "habitat", "residência", "morada"]
     },
     "What do you do in your daily life? What do you do during the day and at night?": {
         "image": "stickers/routine.png",
-        "caption": "🌙 Daily Life Detective!\nYou've discovered my secret schedule!",
-        "semantic_keywords": ["daily", "routine", "day", "night", "schedule", "activities"]
+        "caption": {
+            "English": "🌙 Daily Life Detective!\nYou've discovered my secret schedule!",
+            "Portuguese": "🌙 Detetive da Vida Diária!\nDescobriste o meu horário secreto!"
+        },
+        "semantic_keywords": ["daily", "routine", "day", "night", "schedule", "activities",
+                             "diário", "rotina", "dia", "noite", "horário", "atividades"]
     },
     "What do you eat for food—and how do you catch it?": {
         "image": "stickers/food.png",
-        "caption": "🍽️ Food Finder!\nThanks for feeding your curiosity!",
-        "semantic_keywords": ["eat", "food", "diet", "prey", "hunt", "catch", "feed"]
+        "caption": {
+            "English": "🍽️ Food Finder!\nThanks for feeding your curiosity!",
+            "Portuguese": "🍽️ Descobridor de Comida!\nObrigado por alimentares a tua curiosidade!"
+        },
+        "semantic_keywords": ["eat", "food", "diet", "prey", "hunt", "catch", "feed",
+                             "comer", "comida", "dieta", "presa", "caçar", "apanhar", "alimentar"]
     },
     "How can I help you? What do you need from humans to help your species thrive?": {
         "image": "stickers/helper.png",
-        "caption": "🌱 Species Supporter!\nYou care about our survival!",
-        "semantic_keywords": ["help", "support", "thrive", "survive", "conservation", "protect", "save"]
+        "caption": {
+            "English": "🌱 Species Supporter!\nYou care about our survival!",
+            "Portuguese": "🌱 Apoiante de Espécies!\nTu importas-te com a nossa sobrevivência!"
+        },
+        "semantic_keywords": ["help", "support", "thrive", "survive", "conservation", "protect", "save",
+                             "ajudar", "apoiar", "prosperar", "sobreviver", "conservação", "proteger", "salvar"]
     }
 }
 
 def semantic_match(user_input, question_key, reward_details):
     """
-    Use OpenAI to determine if the user input semantically matches the question key
+    优化后的语义匹配：使用 invoke() 替代弃用的 __call__()
     """
     prompt = f"""
     Analyze whether the following two questions are similar in meaning:
@@ -371,7 +421,8 @@ def semantic_match(user_input, question_key, reward_details):
     Are these questions essentially asking the same thing? Respond only with 'yes' or 'no'.
     """
     
-    response = semantic_model(prompt)
+    # 优化：使用 invoke() 替代弃用的 __call__()
+    response = semantic_model.invoke(prompt)
     return response.strip().lower() == 'yes'
 
 def chat_message(name):
@@ -379,8 +430,102 @@ def chat_message(name):
         return st.container(key=f"{name}-{uuid.uuid4()}").chat_message(name=name, avatar="zino.png", width="content")
     else:
         return st.container(key=f"{name}-{uuid.uuid4()}").chat_message(name=name, avatar=":material/face:", width="content")
+
+# Language texts
+language_texts = {
+    "English": {
+        "title": "Hi! I'm Fred,",
+        "subtitle": "A Zino's Petrel.",
+        "prompt": "What would you like to ask me?",
+        "chat_placeholder": "Ask a question!",
+        "tips_button": "Tips",
+        "clear_button": "Clear and Restart",
+        "friendship_score": "Friendship Score!",
+        "score_description": "Unlock special stickers with your interactions",
+        "doubtful": "Doubtful about the response?",
+        "fact_check": "Fact-Check this answer",
+        "fact_check_info": "Ask me a question to see the fact-check results based on scientific knowledge!",
+        "loading_audio": "Preparing audio response...",
+        "loading_thought": "Thinking about your question...",
+        "gift_message": "After our wonderful conversation, I feel you deserve something special. \nPlease accept this medal as a symbol of your contribution to Madeira's biodiversity!",
+        "medal_caption": "Biodiversity Trailblazer Medal",
+        "sticker_toast": "You earned a new sticker!",
+        "error_message": "I'm sorry, I had trouble processing that. Could you try again?",
+        "voice_selector": "🎤 Voice",
+        "voice_help": "Cherry: Female (lively) | Ethan: Male",
+        "stickers_collected": "You've collected {current} out of {total} stickers!",
+        "tips_content": """
+        <div style="
+            background-color: #fff;
+            border: 2px solid #a1b065;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        ">
+            <p style="margin-top: 0px;">Your <strong>Friendship Score</strong> grows based on how you talk to your critter friend. 🐦💚</p>
+            <ul>
+                <li>Ask about its habitat or life</li>
+                <li>Show care or kindness</li>
+                <li>Support nature and the planet</li>
+                <li>Share your thoughts or feelings</li>
+                <li>Be playful, curious, and respectful</li>
+            </ul>
+            <p style="margin-top: 10px;">💬 The more positive you are, the higher your score! 🌱✨ But watch out — unkind words or harmful ideas can lower your score. 🚫</p>
+        </div>
+        """
+    },
+    "Portuguese": {
+        "title": "Olá! Eu sou o Fred,",
+        "subtitle": "Uma Freira da Madeira.",
+        "prompt": "O que gostarias de me perguntar?",
+        "chat_placeholder": "Faz uma pergunta!",
+        "tips_button": "Dicas",
+        "clear_button": "Limpar e Recomeçar",
+        "friendship_score": "Pontuação de Amizade!",
+        "score_description": "Desbloqueia autocolantes especiais com as tuas interações",
+        "doubtful": "Com dúvidas sobre a resposta?",
+        "fact_check": "Verificar Factos desta resposta",
+        "fact_check_info": "Faz-me uma pergunta para veres os resultados da verificação baseados em conhecimento científico!",
+        "loading_audio": "A preparar resposta de áudio...",
+        "loading_thought": "A pensar na tua pergunta...",
+        "gift_message": "Após a nossa conversa maravilhosa, sinto que mereces algo especial. \nPor favor, aceita esta medalha como símbolo do teu contributo para a biodiversidade da Madeira!",
+        "medal_caption": "Medalha de Pioneiro da Biodiversidade",
+        "sticker_toast": "Ganhaste um autocolante novo!",
+        "error_message": "Desculpa, tive problemas a processar isso. Podes tentar novamente?",
+        "voice_selector": "🎤 Voz",
+        "voice_help": "Cherry: Feminina (animada) | Ethan: Masculina",
+        "stickers_collected": "Já colecionaste {current} de {total} autocolantes!",
+        "tips_content": """
+        <div style="
+            background-color: #fff;
+            border: 2px solid #a1b065;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        ">
+            <p style="margin-top: 0px;">A tua <strong>Pontuação de Amizade</strong> cresce com base em como falas com o teu amigo animal. 🐦💚</p>
+            <ul>
+                <li>Pergunta sobre o habitat ou vida dele</li>
+                <li>Mostra cuidado ou bondade</li>
+                <li>Apoia a natureza e o planeta</li>
+                <li>Partilha os teus pensamentos ou sentimentos</li>
+                <li>Sê brincalhão, curioso e respeitoso</li>
+            </ul>
+            <p style="margin-top: 10px;">💬 Quanto mais positivo fores, maior será a tua pontuação! 🌱✨ Mas cuidado — palavras rudes ou ideias prejudiciais podem baixar a tua pontuação. 🚫</p>
+        </div>
+        """
+    }
+}
 # UI
 def main():
+    # Language state (initialize first)
+    if "language" not in st.session_state:
+        st.session_state.language = "English"  # Default language
+    
+    # Get current language texts
+    texts = language_texts[st.session_state.language]
+    
+    # Other session state initialization
     if "has_interacted" not in st.session_state:
         st.session_state.has_interacted = False
     if "chat_history" not in st.session_state:
@@ -654,72 +799,18 @@ def main():
                     <img src="data:image/png;base64,{img_base64}" style="width: 100%; max-width: 200px;">
                 </div>
                 <div style="flex: 1;">
-                    <h1 style="margin-top: 0; font-size: 3rem; padding: 0;">Hi! I'm Maria the Zino's Petrel.</h1>
-                    <h3 style="margin-top: 0.5rem; font-weight: bold; padding: 0; font-size: 1.25rem;">What would you like to ask me?</h3>
+                    <h1 style="margin-top: 0; font-size: 3rem; padding: 0;">{texts['title']}</h1>
+                    <h1 style="margin-top: 0; font-size: 3rem; padding: 0;">{texts['subtitle']}</h1>
+                    <h3 style="margin-top: 0.5rem; font-weight: bold; padding: 0; font-size: 1.25rem;">{texts['prompt']}</h3>
                 </div>
             </div>
         """, unsafe_allow_html=True)
         
-        input_section_col1, input_section_col2, input_section_col3 = st.columns([0.5, 0.2, 0.3], gap="small")
-        with input_section_col1:
-            user_input = st.chat_input(placeholder="Ask a question!")
-            print(f"User input: {user_input}")
-        with input_section_col2:
-            # Show guide if toggled
-            @st.dialog("💡How the 'Friendship Score!' Works", width="large")
-            def score_guide():
-                st.markdown("""
-                    <div style="
-                        background-color: #fff;
-                        border: 2px solid #0097b2;
-                        padding: 15px;
-                        border-radius: 10px;
-                        margin-bottom: 15px;
-                    ">
-                        <p style="margin-top: 0px;">Your Friendship Score</strong> grows based on how you talk to your critter friend. 🦭💙</p>
-                        <ul>
-                            <li>Ask about its habitat or life</li>
-                            <li>Show care or kindness</li>
-                            <li>Support nature and the planet</li>
-                            <li>Share your thoughts or feelings</li>
-                            <li>Be playful, curious, and respectful</li>
-                        </ul>
-                        <p style="margin-top: 10px;">💬 The more positive you are, the higher your score! 🌱✨ But watch out — unkind words or harmful ideas can lower your score. 🚫</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-            def toggle_score_guide():
-                st.session_state.show_score_guide = True
-            
-            if st.button("Tips", icon=":material/lightbulb:", help="Click to see tips on how to get a higher Friendship Score!", use_container_width=True, type="primary", on_click=toggle_score_guide):
-                pass
-            # Show tips if the state is true
-            if st.session_state.show_score_guide:
-                score_guide()
-                # Reset the flag after displaying
-                st.session_state.show_score_guide = False
-        with input_section_col3:
-            if st.button("Start new conversation", icon=":material/chat_add_on:", help="Click to clear the chat history and start fresh!", use_container_width=True):
-                st.session_state.chat_history = []
-                st.session_state.show_score_guide = False
-                st.session_state.audio_played = True
-                st.session_state.gift_given = False
-                st.session_state.intimacy_score = 0
-                st.session_state.awarded_stickers = []
-                st.session_state.last_question = ""
-                st.session_state.has_interacted = False
-                st.session_state.processing = False
-                st.session_state.answer_to_speak = ""
-                st.session_state.most_relevant_texts = []
-                st.session_state.last_answer = ""
-                st.session_state.last_sticker = None
-                st.session_state.last_analysis = {}
-                st.session_state.newly_awarded_sticker = False
-                st.session_state.gift_shown = False
-                if "session_id" in st.session_state:
-                    del st.session_state["session_id"]
-                if "logged_interactions" in st.session_state:
-                    del st.session_state["logged_interactions"]
-                st.rerun()
+        # Chat input (full width under title)
+        user_input = st.chat_input(placeholder=texts['chat_placeholder'])
+        print(f"User input: {user_input}")
+        
+        # Chat Section
         chatSection = st.container(height=520, key="chat_section", border=False)
         with chatSection:
             if "chat_history" not in st.session_state:
@@ -750,20 +841,35 @@ def main():
                 with chatSection:
                     loading_placeholder = st.empty()
                     with st.spinner(""):
-                        loading_placeholder.markdown("""
+                        loading_placeholder.markdown(f"""
                             <div class="loading-container">
                                 <div class="loading-spinner"></div>
-                                <div>Thinking about your question...</div>
+                                <div>{texts['loading_thought']}</div>
                             </div>
                         """, unsafe_allow_html=True)
                 
                 # Process response
                 try:
-                    vectordb = Chroma(embedding_function=OpenAIEmbeddings(), persist_directory=get_vectordb(role))
-                    most_relevant_texts = vectordb.max_marginal_relevance_search(current_input, k=2, fetch_k=6, lambda_mult=1)
-                    chain, role_config = get_conversational_chain(role)
-                    raw_answer = chain.run(input_documents=most_relevant_texts, question=current_input)
-                    answer = re.sub(r'^\s*Answer:\s*', '', raw_answer).strip()
+                    vectordb = Chroma(
+                        embedding_function=DashScopeEmbeddings(
+                            model=os.getenv("QWEN_EMBEDDING_MODEL", "text-embedding-v2"),
+                            dashscope_api_key=dashscope_key
+                        ),
+                        persist_directory=get_vectordb(role)
+                    )
+                    # 优化：减少 fetch_k 提升速度，lambda_mult=0.7 平衡相关性和多样性
+                    most_relevant_texts = vectordb.max_marginal_relevance_search(
+                        current_input, 
+                        k=2, 
+                        fetch_k=4,  # 从 6 降到 4，减少计算量
+                        lambda_mult=0.7  # 从 1 降到 0.7，增加多样性
+                    )
+                    chain, role_config = get_conversational_chain(role, st.session_state.language)
+                    # 优化：使用 invoke() 替代弃用的 run()
+                    raw_answer = chain.invoke({"input_documents": most_relevant_texts, "question": current_input})
+                    # 处理 invoke() 返回的字典格式
+                    answer_text = raw_answer.get("output_text", raw_answer) if isinstance(raw_answer, dict) else raw_answer
+                    answer = re.sub(r'^\s*Answer:\s*', '', answer_text).strip()
                     st.session_state.last_answer = answer
 
                     # Save results to session state
@@ -789,7 +895,7 @@ def main():
                     if loading_placeholder:
                         loading_placeholder.empty()
                         
-                    error_msg = "I'm sorry, I had trouble processing that. Could you try again?"
+                    error_msg = texts['error_message']
                     st.session_state.chat_history.append({"role": "assistant", "content": error_msg})
                     
                     with chatSection:
@@ -804,8 +910,6 @@ def main():
 
 
         # Gift section
-        gift_message = "After our wonderful conversation, I feel you deserve something special. \nPlease accept this medal as a symbol of your contribution to Madeira's biodiversity!"
-                    
         @st.dialog("🎁 Your Gift", width=680)
         def gift_dialog():
             with open("gift.png", "rb") as f:
@@ -813,9 +917,9 @@ def main():
             st.markdown(
                 f"""
                 <div class="petrel-response gift-box">
-                    <p>{gift_message}</p>
+                    <p>{texts['gift_message']}</p>
                     <img src="data:image/png;base64,{gift_img_base64}">
-                    <div class="sticker-caption">Biodiversity Trailblazer Medal</div>
+                    <div class="sticker-caption">{texts['medal_caption']}</div>
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -827,15 +931,100 @@ def main():
         
 
     with right_col:
+        # Language switcher
+        st.markdown("**Language / Idioma:**")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🇬🇧 English", use_container_width=True, 
+                        type="primary" if st.session_state.language == "English" else "secondary"):
+                st.session_state.language = "English"
+                st.rerun()
+        with col2:
+            if st.button("🇵🇹 Português", use_container_width=True,
+                        type="primary" if st.session_state.language == "Portuguese" else "secondary"):
+                st.session_state.language = "Portuguese"
+                st.rerun()
+        
+        # Voice selector
+        st.markdown(f"**{texts['voice_selector']}**")
+        if 'tts_voice' not in st.session_state:
+            st.session_state.tts_voice = 'Cherry'
+        
+        # Voice options with descriptions
+        if st.session_state.language == "Portuguese":
+            voice_options = {
+                'Cherry': '🎤 Cherry (Feminina - Animada)',
+                'Ethan': '🎙️ Ethan (Masculina)'
+            }
+        else:
+            voice_options = {
+                'Cherry': '🎤 Cherry (Female - Lively)',
+                'Ethan': '🎙️ Ethan (Male)'
+            }
+        
+        voice_labels = list(voice_options.values())
+        voice_keys = list(voice_options.keys())
+        current_index = voice_keys.index(st.session_state.tts_voice)
+        
+        selected_label = st.selectbox(
+            label="Voice",
+            options=voice_labels,
+            index=current_index,
+            key='voice_selector',
+            label_visibility="collapsed"
+        )
+        
+        # Update session state with selected voice key
+        selected_key = voice_keys[voice_labels.index(selected_label)]
+        st.session_state.tts_voice = selected_key
+        
+        # Tips and Clear buttons
+        input_section_col1, input_section_col2 = st.columns([0.35, 0.65], gap="small")
+        with input_section_col1:
+            # Show guide if toggled
+            @st.dialog("💡How the 'Friendship Score!' Works", width="large")
+            def score_guide():
+                st.markdown(texts['tips_content'], unsafe_allow_html=True)
+                
+            if st.button(texts['tips_button'], icon=":material/lightbulb:", 
+                        help="Click to see tips on how to get a higher Friendship Score!", 
+                        use_container_width=True, type="primary"):
+                score_guide()
+                
+        with input_section_col2:
+            if st.button(texts['clear_button'], icon=":material/chat_add_on:", 
+                        help="Click to clear the chat history and start fresh!", 
+                        use_container_width=True):
+                st.session_state.chat_history = []
+                st.session_state.show_score_guide = False
+                st.session_state.audio_played = True
+                st.session_state.gift_given = False
+                st.session_state.intimacy_score = 0
+                st.session_state.awarded_stickers = []
+                st.session_state.last_question = ""
+                st.session_state.has_interacted = False
+                st.session_state.processing = False
+                st.session_state.most_relevant_texts = []
+                st.session_state.last_answer = ""
+                st.session_state.last_sticker = None
+                st.session_state.last_analysis = {}
+                st.session_state.newly_awarded_sticker = False
+                st.session_state.gift_shown = False
+                if "session_id" in st.session_state:
+                    del st.session_state["session_id"]
+                if "logged_interactions" in st.session_state:
+                    del st.session_state["logged_interactions"]
+                st.rerun()
+        
         # Friendship score section
         current_score = min(6, int(round(st.session_state.intimacy_score)))
         
         st.markdown(f"""
         <div class="friendship-score">
             <div style="font-size:18px; font-style: italic; font-weight:bold; color:#31333e; text-align: left;">
-                Friendship Score!
+                {texts['friendship_score']}
             </div>
-            <div style="font-size:16px; color:#31333e; text-align: left;">Unlock special stickers with your interactions</div>
+            <div style="font-size:16px; color:#31333e; text-align: left;">{texts['score_description']}</div>
             <div style="font-size:24px; margin:5px 0; text-align: left;">
                 <span style="color:#ff6b6b;">{'❤️' * current_score}</span>
                 <span style="color:#ddd;">{'🤍' * (6 - current_score)}</span>
@@ -863,12 +1052,14 @@ def main():
                     # Add this sticker to the awarded list if not already present
                     sticker_key = reward["image"]
                     if sticker_key not in [s["key"] for s in st.session_state.awarded_stickers]:
+                        # Use language-specific caption if available
+                        caption = reward["caption"][st.session_state.language] if isinstance(reward["caption"], dict) else reward["caption"]
                         st.session_state.awarded_stickers.append({
                             "key": sticker_key,
                             "image": reward["image"],
-                            "caption": reward["caption"]
+                            "caption": caption
                         })
-                        st.toast("You earned a new sticker!", icon="⭐")
+                        st.toast(texts['sticker_toast'], icon="⭐")
                         st.session_state.newly_awarded_sticker = True
                     break
         # Display the most recent sticker if any exist
@@ -893,23 +1084,25 @@ def main():
             st.markdown(
                 f"""
                 <div style="text-align: center; font-size: 14px; margin-top: -10px; color: #555; margin-bottom: 20px;">
-                    You've collected {total_collected} out of {total_possible} stickers!
+                    {texts['stickers_collected'].format(current=total_collected, total=total_possible)}
                 </div>
                 """,
                 unsafe_allow_html=True
             )
         # Fact Check Section
-        st.markdown("""
+        st.markdown(f"""
             <div style="font-size:18px; font-style: italic; font-weight:bold; color:#31333e; text-align: left;">
-                Doubtful about the response?
+                {texts['doubtful']}
             </div>
         """, unsafe_allow_html=True)
         
-        with st.expander("Fact-Check this answer", expanded=False):
+        with st.expander(texts['fact_check'], expanded=False):
             if "most_relevant_texts" in st.session_state:  # Check session state instead of locals()
-                concept_state = (
-                    "This is an concept idea. The following text is drawn from authoritative knowledge bases. "
-                )
+                if st.session_state.language == "English":
+                    concept_state = "This is an concept idea. The following text is drawn from authoritative knowledge bases."
+                else:
+                    concept_state = "Esta é uma ideia conceptual. O seguinte texto é retirado de bases de conhecimento autorizadas."
+                
                 st.markdown(f"""
                     <div style="
                         background: #d6efef;
@@ -926,7 +1119,7 @@ def main():
                 if len(st.session_state.most_relevant_texts) > 0:
                     st.write(st.session_state.most_relevant_texts[0].page_content)
             else:
-                st.info("Ask me a question to see the fact-check results based on scientific knowledge!")
+                st.info(texts['fact_check_info'])
     cleanup_audio_files()
 
     # Log the interaction to Supabase
