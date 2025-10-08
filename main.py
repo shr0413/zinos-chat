@@ -12,6 +12,8 @@ import streamlit as st
 import uuid
 import time
 from tts_utils import speak as tts_speak, cleanup_audio_files as tts_cleanup
+from rag_utils import get_rag_instance
+from fact_check_utils import generate_fact_check_content
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 from langchain_community.llms import Tongyi
@@ -850,19 +852,17 @@ def main():
                 
                 # Process response
                 try:
-                    vectordb = Chroma(
-                        embedding_function=DashScopeEmbeddings(
-                            model=os.getenv("QWEN_EMBEDDING_MODEL", "text-embedding-v2"),
-                            dashscope_api_key=dashscope_key
-                        ),
-                        persist_directory=get_vectordb(role)
+                    # 使用优化的 RAG 检索器（带缓存）
+                    rag = get_rag_instance(
+                        persist_directory=get_vectordb(role),
+                        dashscope_api_key=dashscope_key
                     )
-                    # 优化：减少 fetch_k 提升速度，lambda_mult=0.7 平衡相关性和多样性
-                    most_relevant_texts = vectordb.max_marginal_relevance_search(
-                        current_input, 
-                        k=2, 
-                        fetch_k=4,  # 从 6 降到 4，减少计算量
-                        lambda_mult=0.7  # 从 1 降到 0.7，增加多样性
+                    
+                    # 智能检索：动态 k 值、相关性过滤
+                    most_relevant_texts = rag.retrieve(
+                        query=current_input,
+                        lambda_mult=0.3,  # 优先相关性（从0.7降到0.3）
+                        relevance_threshold=None  # 暂不启用过滤
                     )
                     chain, role_config = get_conversational_chain(role, st.session_state.language)
                     # 优化：使用 invoke() 替代弃用的 run()
@@ -1097,27 +1097,56 @@ def main():
         """, unsafe_allow_html=True)
         
         with st.expander(texts['fact_check'], expanded=False):
-            if "most_relevant_texts" in st.session_state:  # Check session state instead of locals()
-                if st.session_state.language == "English":
-                    concept_state = "This is an concept idea. The following text is drawn from authoritative knowledge bases."
-                else:
-                    concept_state = "Esta é uma ideia conceptual. O seguinte texto é retirado de bases de conhecimento autorizadas."
-                
-                st.markdown(f"""
-                    <div style="
-                        background: #d6efef;
-                        padding: 20px;
-                        border-radius: 10px;
-                        margin: 10px 0;
-                        text-align: center;
-                        border-left: 4px solid #31c1ce;
-                    ">
-                        <p style="font-size: 16px; color: #555;">{concept_state}</p>
-                    </div>
-                """, unsafe_allow_html=True)
-                # Display the first relevant document
+            if "most_relevant_texts" in st.session_state and "last_question" in st.session_state and "last_answer" in st.session_state:
+                # 生成智能摘要（替代原始文档内容）
                 if len(st.session_state.most_relevant_texts) > 0:
-                    st.write(st.session_state.most_relevant_texts[0].page_content)
+                    try:
+                        fact_check_summary = generate_fact_check_content(
+                            question=st.session_state.last_question,
+                            retrieved_docs=st.session_state.most_relevant_texts,
+                            ai_answer=st.session_state.last_answer,
+                            language=st.session_state.language
+                        )
+                        
+                        # 使用容器样式包裹 Markdown 内容
+                        st.markdown("""
+                            <style>
+                            .fact-check-box {
+                                background: #f0f8ff;
+                                padding: 20px;
+                                border-radius: 10px;
+                                margin: 10px 0;
+                                border-left: 4px solid #4a90e2;
+                                color: #2c3e50;
+                                line-height: 1.6;
+                            }
+                            .fact-check-box p {
+                                margin-bottom: 10px;
+                            }
+                            .fact-check-box strong {
+                                color: #1e3a8a;
+                            }
+                            </style>
+                        """, unsafe_allow_html=True)
+                        
+                        # 直接使用 st.markdown 渲染，应用样式类
+                        st.markdown(f'<div class="fact-check-box">', unsafe_allow_html=True)
+                        st.markdown(fact_check_summary)
+                        st.markdown('</div>', unsafe_allow_html=True)
+                        
+                        # 可选：显示原始文档（折叠状态）
+                        with st.expander("📄 查看原始文档 / View Raw Documents", expanded=False):
+                            for i, doc in enumerate(st.session_state.most_relevant_texts[:2], 1):
+                                source = doc.metadata.get('source_file', 'Unknown')
+                                page = doc.metadata.get('page', 'N/A')
+                                st.markdown(f"**{i}. {source} (Page {page})**")
+                                st.text(doc.page_content[:500] + "..." if len(doc.page_content) > 500 else doc.page_content)
+                                st.markdown("---")
+                    
+                    except Exception as e:
+                        # 降级：显示原始内容
+                        print(f"[Fact-Check] 摘要生成失败: {str(e)}")
+                        st.write(st.session_state.most_relevant_texts[0].page_content[:300] + "...")
             else:
                 st.info(texts['fact_check_info'])
     cleanup_audio_files()

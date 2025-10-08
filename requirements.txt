@@ -9,6 +9,7 @@ python-dotenv
 # ==================== Qwen 相关（新增）====================
 dashscope>=1.24.6
 numpy
+tqdm  # 向量化进度显示
 
 # ==================== 原有依赖 ====================
 pypdf
@@ -22,6 +23,7 @@ pocketsphinx
 st-supabase-connection==2.1.1
 
 # ==================== 可选依赖（Day 3-4 需要）====================
-# tavily-python  # 实时搜索（可选）
+ddgs  # 免费互联网搜索（推荐，用于 Fact-Check 补充，原 duckduckgo-search 已改名）
+tavily-python      # 高质量搜索（可选，需 API Key）
 # cohere         # 重排序（可选）
 # langchain-openai  # OpenAI 降级（可选）
