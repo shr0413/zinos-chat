@@ -1,8 +1,7 @@
-# 环境变量和配置
+# 环境变量
 .env
 *.env
 config.env
-.streamlit/secrets.toml
 
 # Python
 __pycache__/
@@ -10,67 +9,41 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
 
-# Virtual environments
+# 虚拟环境
 venv/
 env/
 ENV/
-env.bak/
-venv.bak/
 
 # IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
 
-# OS
+# 操作系统
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
-# Audio files (临时文件)
+# Streamlit
+.streamlit/secrets.toml
+
+# 临时音频文件
+*.mp3
 output_*.mp3
 temp_*.mp3
-downloaded_audio.wav
+!intro5.mp3
 
-# ChromaDB (向量数据库会在云端重建)
-db5_qwen/
-chroma.sqlite3
-*.sqlite3
+# ChromaDB（可选，如果数据库太大）
+# db5/
+# db5_qwen/
 
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# pyenv
-.python-version
-
-# Logs
-*.log
-
-# 测试和临时文件
-test_*.py
-temp_*.py
+# 临时文件
+temp_*
 *.tmp
+*.bak
 
+# 压缩包
+*.zip
+*.rar
+*.tar.gz
