@@ -21,6 +21,7 @@ pydub
 ffmpeg-python
 pocketsphinx
 st-supabase-connection==2.1.1
+supabase  # Supabase 客户端（用于测试）
 
 # ==================== 可选依赖（Day 3-4 需要）====================
 ddgs  # 免费互联网搜索（推荐，用于 Fact-Check 补充，原 duckduckgo-search 已改名）

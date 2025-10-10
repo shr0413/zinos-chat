@@ -29,7 +29,9 @@ import streamlit.components.v1 as components
 from st_supabase_connection import SupabaseConnection, execute_query
 import hashlib
 
-conn = st.connection("supabase",type=SupabaseConnection)
+def get_supabase_connection():
+    """获取 Supabase 连接（避免缓存问题）"""
+    return st.connection("supabase", type=SupabaseConnection)
 
 def get_session_id():
     if "session_id" not in st.session_state:
@@ -63,6 +65,7 @@ def log_interaction(user_input, ai_response, intimacy_score, is_sticker_awarded,
             "response_analysis": response_analysis
         }
 
+        conn = get_supabase_connection()
         execute_query(conn.table("interactions").insert(data, count="None"), ttl='0')
         print(f"Logged interaction to Supabase: {session_id}")
         return True
@@ -677,8 +680,22 @@ def main():
         /* Additional chat input styling */
         .stChatInput > div {
             border-color: #345e42 !important;
-            background-color: rgba(255, 255, 255, 0.8) !important;
+            background-color: rgba(255, 255, 255, 0.9) !important;
             border-radius: 20px !important;
+        }
+        
+        /* Input text color */
+        .stChatInput input,
+        .stChatInput textarea {
+            color: #2d4f38 !important;
+            font-weight: 500 !important;
+        }
+        
+        /* Placeholder text color */
+        .stChatInput input::placeholder,
+        .stChatInput textarea::placeholder {
+            color: #6b8576 !important;
+            opacity: 0.7 !important;
         }
         
         /* Change chat input focus state */
