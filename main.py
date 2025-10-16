@@ -15,6 +15,8 @@ from tts_utils import speak as tts_speak, cleanup_audio_files as tts_cleanup
 from rag_utils import get_rag_instance
 from fact_check_utils import generate_fact_check_content
 from langchain.chains.question_answering import load_qa_chain
+from langchain.chains import ConversationalRetrievalChain
+from langchain.memory import ConversationBufferWindowMemory
 from langchain.prompts import PromptTemplate
 from langchain_community.llms import Tongyi
 from langchain_community.embeddings import DashScopeEmbeddings
@@ -333,7 +335,19 @@ def load_and_split(path: str):
 def get_vectordb(role):
     return role_configs[role]['persist_directory']
 
-def get_conversational_chain(role, language="English"):
+def get_conversational_chain(role, language="English", vectordb=None):
+    """
+    创建带有对话记忆的 RAG Chain
+    
+    Args:
+        role: 角色配置名称
+        language: 语言选择 (English/Portuguese)
+        vectordb: ChromaDB 向量数据库实例
+    
+    Returns:
+        ConversationalRetrievalChain: 带记忆的对话检索链
+        dict: 角色配置
+    """
     role_config = role_configs[role]
     
     # Choose the appropriate prompt based on language
@@ -342,33 +356,51 @@ def get_conversational_chain(role, language="English"):
     else:
         base_prompt = role_config['english_prompt']
     
-    prompt_template = f"""
-    {base_prompt}
-    
-    Context:
-    {{input_documents}}
-    
-    Question: {{question}}
-    
-    Answer:
-    """
-    
+    # 创建 LLM
     model = Tongyi(
         model_name=os.getenv("QWEN_MODEL_NAME", "qwen-turbo"),
         temperature=0,
         dashscope_api_key=dashscope_key
     )
-    prompt = PromptTemplate(
-        template=prompt_template,
-        input_variables=["input_documents", "question"] 
+    
+    # 创建 Retriever（从 vectordb）
+    retriever = vectordb.as_retriever(
+        search_type="mmr",  # 使用最大边际相关性
+        search_kwargs={
+            "k": 3,  # 返回3个最相关文档
+            "fetch_k": 9,  # 从9个候选中选择
+            "lambda_mult": 0.3  # 平衡相关性和多样性
+        }
     )
     
-    return load_qa_chain(
+    # 创建对话记忆（保留最近5轮对话）
+    memory = ConversationBufferWindowMemory(
+        k=5,  # 保留最近5轮对话
+        memory_key="chat_history",  # LangChain 标准 key
+        return_messages=True,  # 返回消息对象而不是字符串
+        output_key="answer"  # ConversationalRetrievalChain 的输出key
+    )
+    
+    # 自定义提示词（用于文档合成）
+    # 将 base_prompt 中的 {input_documents} 替换为 {context}
+    formatted_base_prompt = base_prompt.replace("{input_documents}", "{context}")
+    
+    combine_docs_prompt = PromptTemplate(
+        template=formatted_base_prompt,
+        input_variables=["context", "question"]
+    )
+    
+    # 创建 ConversationalRetrievalChain
+    chain = ConversationalRetrievalChain.from_llm(
         llm=model,
-        chain_type="stuff",
-        prompt=prompt,
-        document_variable_name="input_documents"
-    ), role_config
+        retriever=retriever,
+        memory=memory,
+        combine_docs_chain_kwargs={"prompt": combine_docs_prompt},
+        return_source_documents=True,  # 返回源文档用于 Fact-Check
+        verbose=False
+    )
+    
+    return chain, role_config, memory
 
 # Sticker triggers
 sticker_rewards = {
@@ -565,6 +597,12 @@ def main():
         st.session_state.newly_awarded_sticker = False
     if "gift_shown" not in st.session_state:
         st.session_state.gift_shown = False
+    
+    # 会话记忆初始化（用于 ConversationalRetrievalChain）
+    if "conversation_chain" not in st.session_state:
+        st.session_state.conversation_chain = None
+    if "conversation_memory" not in st.session_state:
+        st.session_state.conversation_memory = None
         
     st.set_page_config(layout="wide")
 
@@ -875,22 +913,36 @@ def main():
                         dashscope_api_key=dashscope_key
                     )
                     
-                    # 智能检索：动态 k 值、相关性过滤
-                    most_relevant_texts = rag.retrieve(
-                        query=current_input,
-                        lambda_mult=0.3,  # 优先相关性（从0.7降到0.3）
-                        relevance_threshold=None  # 暂不启用过滤
-                    )
-                    chain, role_config = get_conversational_chain(role, st.session_state.language)
-                    # 优化：使用 invoke() 替代弃用的 run()
-                    raw_answer = chain.invoke({"input_documents": most_relevant_texts, "question": current_input})
-                    # 处理 invoke() 返回的字典格式
-                    answer_text = raw_answer.get("output_text", raw_answer) if isinstance(raw_answer, dict) else raw_answer
-                    answer = re.sub(r'^\s*Answer:\s*', '', answer_text).strip()
+                    # 创建或重用 ConversationalRetrievalChain（带记忆）
+                    if (st.session_state.conversation_chain is None or 
+                        st.session_state.conversation_memory is None):
+                        # 第一次创建 chain 和 memory
+                        chain, role_config, memory = get_conversational_chain(
+                            role=role, 
+                            language=st.session_state.language,
+                            vectordb=rag.vectordb
+                        )
+                        st.session_state.conversation_chain = chain
+                        st.session_state.conversation_memory = memory
+                    else:
+                        # 重用现有的 chain 和 memory
+                        chain = st.session_state.conversation_chain
+                        memory = st.session_state.conversation_memory
+                    
+                    # 调用 ConversationalRetrievalChain（自动检索文档并使用历史）
+                    # 传入 question，retriever 会自动获取相关文档
+                    result = chain.invoke({"question": current_input})
+                    
+                    # 处理返回结果
+                    answer = result.get("answer", "")
+                    answer = re.sub(r'^\s*Answer:\s*', '', answer).strip()
                     st.session_state.last_answer = answer
-
-                    # Save results to session state
+                    
+                    # 提取源文档用于 Fact-Check
+                    most_relevant_texts = result.get("source_documents", [])
                     st.session_state.most_relevant_texts = most_relevant_texts
+
+                    # Save to Streamlit chat history (用于 UI 显示)
                     st.session_state.chat_history.append({"role": "assistant", "content": answer})
                     update_intimacy_score(current_input)
                     gift_triggered = check_gift()
@@ -1027,6 +1079,9 @@ def main():
                 st.session_state.last_analysis = {}
                 st.session_state.newly_awarded_sticker = False
                 st.session_state.gift_shown = False
+                # 清除对话记忆（重要！）
+                st.session_state.conversation_chain = None
+                st.session_state.conversation_memory = None
                 if "session_id" in st.session_state:
                     del st.session_state["session_id"]
                 if "logged_interactions" in st.session_state:

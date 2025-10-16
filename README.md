@@ -32,6 +32,11 @@ Zino's Chat 是一个创新的 AI 互动教育系统，让用户能够与濒危�
 - **角色扮演**: Zino's Petrel 化身，真实互动体验
 - **语音合成**: Qwen TTS 提供自然流畅的语音（支持 Cherry/Ethan 音色）
 - **双语切换**: 英语/葡萄牙语无缝切换
+- **🧠 上下文记忆** 🆕: 
+  - 自动记住最近 5 轮对话
+  - 理解代词指代（如 "它在哪里？" 能关联之前提到的地点）
+  - 连贯的多轮对话体验
+  - 基于 LangChain Memory 技术
 
 ### 📚 RAG 知识增强
 - **权威知识库**: 基于 18 篇科学论文（1298 文档块）
@@ -195,6 +200,32 @@ python test_user_questions.py
 - ✅ 通过率: ≥78%
 - ✅ 平均覆盖率: ≥50%
 
+### 🧠 上下文记忆测试 🆕
+```bash
+python test_conversation_memory.py
+```
+
+**测试场景：**
+1. **问题**: "Where do you live?"  
+   **预期**: 回答 Madeira、mountains 等
+
+2. **问题**: "How high is it there?" ← 测试代词理解  
+   **预期**: 理解 "it" 指代 Madeira/栖息地，回答海拔信息
+
+3. **问题**: "Is it cold at night?" ← 测试上下文延续  
+   **预期**: 理解 "it" 指代栖息地的温度
+
+4. **问题**: "What do you eat?"  
+   **预期**: 回答食物（fish, squid）
+
+5. **问题**: "How do you catch them?" ← 测试指代理解  
+   **预期**: 理解 "them" 指代食物，回答捕食方式
+
+**期望结果：**
+- ✅ 通过率: ≥80%
+- ✅ 代词指代理解正确
+- ✅ Memory 保留最近 5 轮对话
+
 ---
 
 ## 🛠️ 技术栈
@@ -204,7 +235,7 @@ python test_user_questions.py
 | **AI 模型** | Qwen (通义千问) | LLM、Embeddings、TTS |
 | **前端框架** | Streamlit | Web 应用界面 |
 | **向量数据库** | ChromaDB | 知识库存储 |
-| **RAG 框架** | LangChain | 检索增强生成 |
+| **RAG 框架** | LangChain | 检索增强生成 + 对话记忆 |
 | **网络搜索** | DuckDuckGo (ddgs) | 免费互联网搜索 |
 | **数据库** | Supabase | 交互记录存储 |
 | **文档处理** | PyPDF | PDF 解析 |
