@@ -7,11 +7,16 @@ import os
 from langchain_community.llms import Tongyi
 from dotenv import load_dotenv
 
+# 导入统一的Prompt管理模块
+from prompts import Prompts
+
 load_dotenv()
 
 def summarize_fact_check(question, retrieved_docs, ai_answer, language="English"):
     """
     对 Fact-Check 内容进行智能摘要
+    
+    使用Prompts模块统一管理的Fact-Check prompt
     
     Args:
         question: 用户问题
@@ -36,47 +41,13 @@ def summarize_fact_check(question, retrieved_docs, ai_answer, language="English"
     
     combined_docs = "\n\n".join(doc_contents)
     
-    # 构建摘要 Prompt
-    if language == "Portuguese":
-        prompt = f"""
-        Tu és um verificador de factos científico. Com base nos documentos fornecidos, cria um resumo claro e conciso.
-
-        **Pergunta do utilizador:** {question}
-
-        **Resposta da IA:** {ai_answer}
-
-        **Documentos de referência:**
-        {combined_docs}
-
-        **Tua tarefa:**
-        1. Resume os pontos-chave dos documentos que apoiam a resposta
-        2. Menciona dados específicos (números, locais, datas) se disponíveis
-        3. Mantém o resumo abaixo de 100 palavras
-        4. Usa linguagem simples e clara
-        5. Se os documentos não apoiam a resposta, indica isso
-
-        **Resumo factual:**
-        """
-    else:
-        prompt = f"""
-        You are a scientific fact-checker. Based on the provided documents, create a clear and concise summary.
-
-        **User's Question:** {question}
-
-        **AI's Answer:** {ai_answer}
-
-        **Reference Documents:**
-        {combined_docs}
-
-        **Your Task:**
-        1. Summarize key points from the documents that support the answer
-        2. Mention specific data (numbers, locations, dates) if available
-        3. Keep the summary under 100 words
-        4. Use simple, clear language
-        5. If documents don't support the answer, indicate that
-
-        **Factual Summary:**
-        """
+    # 使用Prompts模块生成Fact-Check摘要prompt
+    prompt = Prompts.get_fact_check_summary_prompt(
+        question=question,
+        ai_answer=ai_answer,
+        doc_contents=combined_docs,
+        language=language
+    )
     
     # 使用 Qwen LLM 生成摘要
     try:

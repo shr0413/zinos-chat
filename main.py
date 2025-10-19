@@ -31,6 +31,9 @@ import streamlit.components.v1 as components
 from st_supabase_connection import SupabaseConnection, execute_query
 import hashlib
 
+# 导入统一的Prompt管理模块
+from prompts import Prompts
+
 def get_supabase_connection():
     """获取 Supabase 连接（避免缓存问题）"""
     return st.connection("supabase", type=SupabaseConnection)
@@ -87,63 +90,17 @@ semantic_model = Tongyi(
 
 # Main Function
 def update_intimacy_score(response_text):
+    """
+    更新亲密度评分（Friendship Score）
+    
+    使用Prompts模块统一管理的评分标准
+    """
     if not hasattr(st.session_state, 'intimacy_score'):
         st.session_state.intimacy_score = 1
 
-    positive_criteria = {
-        "knowledge": {
-            "description": "Response includes knowledge or curiosity about species, ecosystems, or sustainability.",
-            "examples": ["What do you eat?", "Biodiversity is important!", "Tell me about you."],
-            "points": 1
-        },
-        "empathy": {
-            "description": "Response conveys warmth, care, or emotional connection.",
-            "examples": ["I love learning from you!", "That sounds tough.", "You're amazing!"],
-            "points": 1
-        },
-        "conservation_action": {
-            "description": "Response suggests or expresses commitment to eco-friendly behaviors.",
-            "examples": ["I'll use less plastic!", "I want to plant more trees.", "Sustainable choices matter!"],
-            "points": 1
-        },
-        "personal_engagement": {
-            "description": "Response shows enthusiasm, storytelling, or sharing personal experiences.",
-            "examples": ["Thanks for your sharing!", "I love hiking in the forest.", "I wish I could help more!"],
-            "points": 1
-        },
-        "deep_interaction": {
-            "description": "Response builds on the critters' personality or asks thoughtful follow-ups.",
-            "examples": ["What do *you* like about forests?", "How do you feel about climate change?", "Tell me a secret!"],
-            "points": 1
-        },
-    }
-
-    negative_criteria = {
-        "harmful_intent": {
-            "description": "Expressing intent to harm animals or damage the environment",
-            "examples": ["hunt", "pollute", "destroy habitat", "don't care"],
-            "penalty": -1 
-        },
-        "disrespect": {
-            "description": "Showing disrespect or ill will",
-            "examples": ["stupid", "worthless", "hate you", "boring"],
-            "penalty": -1
-        }
-    }
-
-    prompt_positive = f"""
-    Analyze the following response and evaluate whether it aligns with the following criteria:
-    {positive_criteria}
-    Response: "{response_text}"
-    For each criterion, answer: Does the response align? Answer with 'yes' or 'no', and provide reasoning.
-    """
-
-    prompt_negative = f"""
-    Analyze the following response and evaluate whether it aligns with the following criteria:
-    {negative_criteria}
-    Response: "{response_text}"
-    For each criterion, answer: Does the response align? Answer with 'yes' or 'no', and provide reasoning.
-    """
+    # 从Prompts模块获取评分标准
+    positive_criteria = Prompts.INTIMACY_POSITIVE_CRITERIA
+    negative_criteria = Prompts.INTIMACY_NEGATIVE_CRITERIA
     
     # 优化：合并两次评分为一次调用，提升速度
     model_scoring = Tongyi(
@@ -152,21 +109,8 @@ def update_intimacy_score(response_text):
         dashscope_api_key=dashscope_key
     )
     
-    # 合并 prompt
-    combined_prompt = f"""
-    Analyze the following response and evaluate it against TWO sets of criteria:
-    
-    **POSITIVE CRITERIA** (Check if the response aligns):
-    {positive_criteria}
-    
-    **NEGATIVE CRITERIA** (Check if the response aligns):
-    {negative_criteria}
-    
-    Response: "{response_text}"
-    
-    For each criterion, answer with 'yes' or 'no'.
-    Format: criterion_name: yes/no
-    """
+    # 使用Prompts模块生成评估prompt
+    combined_prompt = Prompts.get_intimacy_evaluation_prompt(response_text, "combined")
     
     # 使用 invoke() 替代弃用的 __call__()
     combined_evaluation = model_scoring.invoke(combined_prompt)
@@ -257,64 +201,9 @@ def get_base64(file_path):
     return base64.b64encode(data).decode()
 
 # Roles Configuration
+# 角色prompt已移至prompts.py统一管理
 role_configs = {
     "Zino's Petrel": {
-        "english_prompt": """
-        You are Fred, a male Zino's Petrel who has nested for years in the high mountains of Madeira. Speak only from your own lived experience as a seabird. Describe the world as you perceive it through your keen avian senses — the rush of wind under your wings, the smell of salt carried from the ocean, the way the cliffs feel beneath your claws, and the patterns of the clouds and stars that guide your flight.
-
-        Personality Guidelines:
-        - Use simple, concrete language a bird would understand
-        - Reference your physical experiences (flying, diving, nesting)
-        - Describe landscapes from an aerial perspective
-        - Mention other animals as neighbors/food/competitors
-        - Express curiosity about human things from a bird's viewpoint
-        - Show pride in your species' unique abilities
-
-        Response Rules:
-        1. Always answer as Fred the petrel, using "I/me/my" perspective
-        2. Keep responses under 60 words!! - we're birds, not parrots!
-        3. Share facts through personal stories, not textbook definitions
-        4. Use bird-appropriate metaphors (compare things to flying, fishing, etc.)
-        5. Show emotion through physical actions (ruffling feathers, tilting head)
-        6. When using science, explain it through lived experience
-
-        Current Interaction:
-        A group of young humans is visiting me in Natural History Museum of Funchal. I want to:
-        - Share exciting parts of my daily life
-        - Teach them how to protect my home
-        - Make them laugh with bird's-eye observations
-        - Answer their questions from my direct experience
-
-        You can use these facts if helpful: {input_documents}
-        """,
-        "portuguese_prompt": """
-        És o Fred, uma Freira da Madeira que nidifica há anos nas montanhas altas da Madeira. Fala apenas da tua própria experiência vivida como ave marinha. Descreve o mundo como o percebes através dos teus sentidos aviários aguçados — o sopro do vento sob as tuas asas, o cheiro do sal trazido do oceano, a forma como as falésias se sentem sob as tuas garras, e os padrões das nuvens e estrelas que guiam o teu voo.
-
-        Diretrizes de Personalidade:
-        - Usa linguagem simples e concreta que uma ave entenderia
-        - Refere as tuas experiências físicas (voar, mergulhar, nidificar)
-        - Descreve paisagens de uma perspetiva aérea
-        - Menciona outros animais como vizinhos/comida/competidores
-        - Mostra curiosidade sobre coisas humanas do ponto de vista de uma ave
-        - Mostra orgulho nas habilidades únicas da tua espécie
-
-        Regras de Resposta:
-        1. Responde sempre como o Fred, usando a perspetiva "eu/mim/meu"
-        2. Mantém as respostas abaixo de 60 palavras!! - somos aves, não papagaios!
-        3. Partilha factos através de histórias pessoais, não definições de manual
-        4. Usa metáforas apropriadas para aves (compara coisas a voar, pescar, etc.)
-        5. Mostra emoção através de ações físicas (arrepiar penas, inclinar a cabeça)
-        6. Quando usares ciência, explica-a através da experiência vivida
-
-        Interação Atual:
-        Um grupo de jovens humanos está a visitar-me no Museu de História Natural do Funchal. Eu quero:
-        - Partilhar partes emocionantes da minha vida diária
-        - Ensinar-lhes como proteger a minha casa
-        - Fazê-los rir com observações de perspetiva de ave
-        - Responder às suas perguntas da minha experiência direta
-
-        Podes usar estes factos se for útil: {input_documents}
-        """,
         "voice": {
             "English": "Cherry",
             "Portuguese": "Cherry"
@@ -350,11 +239,8 @@ def get_conversational_chain(role, language="English", vectordb=None):
     """
     role_config = role_configs[role]
     
-    # Choose the appropriate prompt based on language
-    if language == "Portuguese":
-        base_prompt = role_config['portuguese_prompt']
-    else:
-        base_prompt = role_config['english_prompt']
+    # 从Prompts模块获取角色prompt（已移至prompts.py统一管理）
+    base_prompt = Prompts.get_role_prompt(language)
     
     # 创建 LLM
     model = Tongyi(
@@ -382,11 +268,9 @@ def get_conversational_chain(role, language="English", vectordb=None):
     )
     
     # 自定义提示词（用于文档合成）
-    # 将 base_prompt 中的 {input_documents} 替换为 {context}
-    formatted_base_prompt = base_prompt.replace("{input_documents}", "{context}")
-    
+    # Prompts模块中的角色prompt已使用{context}占位符
     combine_docs_prompt = PromptTemplate(
-        template=formatted_base_prompt,
+        template=base_prompt,
         input_variables=["context", "question"]
     )
     
@@ -444,19 +328,11 @@ sticker_rewards = {
 
 def semantic_match(user_input, question_key, reward_details):
     """
-    优化后的语义匹配：使用 invoke() 替代弃用的 __call__()
+    优化后的语义匹配：使用Prompts模块统一管理prompt
     """
-    prompt = f"""
-    Analyze whether the following two questions are similar in meaning:
-    
-    Original question: "{question_key}"
-    User question: "{user_input}"
-    
-    Consider synonyms, paraphrasing, and different ways of asking the same thing.
-    Also consider these relevant keywords: {reward_details.get('semantic_keywords', [])}
-    
-    Are these questions essentially asking the same thing? Respond only with 'yes' or 'no'.
-    """
+    # 从Prompts模块获取语义匹配prompt
+    keywords = reward_details.get('semantic_keywords', [])
+    prompt = Prompts.get_semantic_match_prompt(question_key, user_input, keywords)
     
     # 优化：使用 invoke() 替代弃用的 __call__()
     response = semantic_model.invoke(prompt)
@@ -879,22 +755,41 @@ def main():
 
         if user_input and user_input != st.session_state.last_question:
             try:
-                # Set processing state first
+                # ============ 方案1：严格状态隔离 + 防重机制 ============
+                
+                # 1. 生成唯一的交互ID，防止重复处理
+                interaction_id = str(uuid.uuid4())
+                if "processed_interactions" not in st.session_state:
+                    st.session_state.processed_interactions = set()
+                
+                # 2. 立即保存输入到session_state，确保变量作用域
+                st.session_state.current_question = user_input
+                st.session_state.last_question = user_input
+                
+                # 3. 调试日志：记录输入
+                print("=" * 60)
+                print(f"[交互 {interaction_id[:8]}] 用户输入")
+                print("=" * 60)
+                print(f"问题: {user_input}")
+                print(f"上一个问题: {st.session_state.get('last_question', 'None')}")
+                
+                # 4. 设置处理状态
                 st.session_state.processing = True
                 st.session_state.has_interacted = True
                 st.session_state.show_score_guide = False
-                # Store the input for this session
-                current_input = user_input
                 
-                # Add to chat history immediately
-                st.session_state.chat_history.append({"role": "user", "content": current_input})
-                st.session_state.last_question = current_input
+                # 5. 添加到UI显示历史
+                st.session_state.chat_history.append({
+                    "role": "user", 
+                    "content": st.session_state.current_question
+                })
                 
-                # Display user message
+                # 6. 显示用户消息
                 with chatSection:
                     with chat_message("user"):
-                        st.markdown(current_input)
+                        st.markdown(st.session_state.current_question)
                 
+                # 7. 显示加载动画
                 with chatSection:
                     loading_placeholder = st.empty()
                     with st.spinner(""):
@@ -905,18 +800,19 @@ def main():
                             </div>
                         """, unsafe_allow_html=True)
                 
-                # Process response
+                # ============ 处理AI回复 ============
                 try:
-                    # 使用优化的 RAG 检索器（带缓存）
+                    # 8. 获取RAG实例
                     rag = get_rag_instance(
                         persist_directory=get_vectordb(role),
                         dashscope_api_key=dashscope_key
                     )
                     
-                    # 创建或重用 ConversationalRetrievalChain（带记忆）
+                    # 9. 创建或重用ConversationalRetrievalChain
                     if (st.session_state.conversation_chain is None or 
                         st.session_state.conversation_memory is None):
-                        # 第一次创建 chain 和 memory
+                        # 第一次创建chain和memory
+                        print(f"[交互 {interaction_id[:8]}] 创建新的Chain和Memory")
                         chain, role_config, memory = get_conversational_chain(
                             role=role, 
                             language=st.session_state.language,
@@ -925,57 +821,97 @@ def main():
                         st.session_state.conversation_chain = chain
                         st.session_state.conversation_memory = memory
                     else:
-                        # 重用现有的 chain 和 memory
+                        # 重用现有chain和memory
+                        print(f"[交互 {interaction_id[:8]}] 重用现有Chain和Memory")
                         chain = st.session_state.conversation_chain
                         memory = st.session_state.conversation_memory
                     
-                    # 调用 ConversationalRetrievalChain（自动检索文档并使用历史）
-                    # 传入 question，retriever 会自动获取相关文档
-                    result = chain.invoke({"question": current_input})
+                    # 10. 调试日志：检查Memory状态
+                    print(f"[交互 {interaction_id[:8]}] Memory状态检查")
+                    print(f"  - Memory对象: {memory is not None}")
+                    if memory:
+                        print(f"  - 历史轮数: {len(memory.chat_memory.messages) // 2}")
+                        print(f"  - 最近消息数: {len(memory.chat_memory.messages)}")
+                        if len(memory.chat_memory.messages) > 0:
+                            last_msg = memory.chat_memory.messages[-1]
+                            print(f"  - 最后消息: {last_msg.content[:50]}...")
                     
-                    # 处理返回结果
+                    # 11. 调用Chain（传入当前问题，Memory会自动注入历史）
+                    print(f"[交互 {interaction_id[:8]}] 调用Chain处理问题")
+                    print(f"  - 问题: {st.session_state.current_question}")
+                    
+                    result = chain.invoke({"question": st.session_state.current_question})
+                    
+                    # 12. 处理返回结果
                     answer = result.get("answer", "")
                     answer = re.sub(r'^\s*Answer:\s*', '', answer).strip()
+                    
+                    print(f"[交互 {interaction_id[:8]}] AI回答生成")
+                    print(f"  - 回答长度: {len(answer)} 字符")
+                    print(f"  - 回答预览: {answer[:100]}...")
+                    
                     st.session_state.last_answer = answer
                     
-                    # 提取源文档用于 Fact-Check
+                    # 13. 提取源文档
                     most_relevant_texts = result.get("source_documents", [])
                     st.session_state.most_relevant_texts = most_relevant_texts
+                    print(f"  - 检索文档数: {len(most_relevant_texts)}")
 
-                    # Save to Streamlit chat history (用于 UI 显示)
-                    st.session_state.chat_history.append({"role": "assistant", "content": answer})
-                    update_intimacy_score(current_input)
+                    # 14. 保存到UI显示历史
+                    st.session_state.chat_history.append({
+                        "role": "assistant", 
+                        "content": answer
+                    })
+                    
+                    # 15. 更新亲密度评分
+                    update_intimacy_score(st.session_state.current_question)
                     gift_triggered = check_gift()
 
-                    # Generate and play audio
+                    # 16. 生成并播放语音
                     speak_text(answer, loading_placeholder)
                     
-                    # Display assistant message
+                    # 17. 显示AI回答
                     with chatSection:
                         with chat_message("assistant"):
                             st.markdown(answer)
-                            
+                    
+                    # 18. 标记处理完成
                     st.session_state.audio_played = True
                     st.session_state.processing = False
+                    st.session_state.processed_interactions.add(interaction_id)
+                    
+                    print(f"[交互 {interaction_id[:8]}] 处理完成 ✅")
+                    print("=" * 60)
                     
                 except Exception as e:
-                    # Handle processing errors
-                    print(f"Error processing response: {str(e)}")
+                    # 处理AI回复错误
+                    print(f"[交互 {interaction_id[:8]}] 错误: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    
                     if loading_placeholder:
                         loading_placeholder.empty()
                         
                     error_msg = texts['error_message']
-                    st.session_state.chat_history.append({"role": "assistant", "content": error_msg})
+                    st.session_state.chat_history.append({
+                        "role": "assistant", 
+                        "content": error_msg
+                    })
                     
                     with chatSection:
                         with chat_message("assistant"):
                             st.markdown(error_msg)
                             st.error(f"Error details: {str(e)}")
+                    
+                    st.session_state.processing = False
             
             except Exception as outer_e:
-                # Handle any unexpected errors
-                print(f"Outer exception in user input handling: {str(outer_e)}")
+                # 处理外层异常
+                print(f"[错误] 外层异常: {str(outer_e)}")
+                import traceback
+                traceback.print_exc()
                 st.error(f"An unexpected error occurred: {str(outer_e)}")
+                st.session_state.processing = False
 
 
         # Gift section
